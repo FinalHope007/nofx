@@ -245,6 +245,7 @@ func (s *Server) handleGetSupportedModels(c *gin.Context) {
 	// Return static list of supported AI models with default versions
 	supportedModels := []map[string]interface{}{
 		{"id": "claw402", "name": "Claw402 (Base USDC)", "provider": "claw402", "defaultModel": "gpt-5.6"},
+		{"id": "custom", "name": "Custom (OpenAI-compatible)", "provider": "custom", "defaultModel": ""},
 	}
 
 	c.JSON(http.StatusOK, supportedModels)

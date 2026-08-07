@@ -7,12 +7,24 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
 
 // Private/Reserved IP ranges that should be blocked to prevent SSRF
 var privateIPBlocks []*net.IPNet
+
+// allowLocalCustomAPI reports whether the custom AI provider is permitted to
+// use loopback/private IPs (env ALLOW_LOCAL_CUSTOM_API=1). Read at call time
+// (not package init) so it observes the runtime environment after .env is
+// loaded by the application on startup. Defaults to OFF to keep SSRF
+// protection intact for all other traffic. This is a narrow, opt-in escape
+// hatch scoped to the custom-provider URL path.
+func allowLocalCustomAPI() bool {
+	v := strings.TrimSpace(os.Getenv("ALLOW_LOCAL_CUSTOM_API"))
+	return v != "" && v != "0" && v != "false"
+}
 
 func init() {
 	// Initialize private IP blocks
@@ -49,8 +61,13 @@ func (e *SSRFError) Error() string {
 	return fmt.Sprintf("SSRF blocked: %s - %s", e.URL, e.Reason)
 }
 
-// isPrivateIP checks if an IP address is in a private/reserved range
+// isPrivateIP checks if an IP address is in a private/reserved range.
+// When ALLOW_LOCAL_CUSTOM_API is set, loopback/private targets are permitted
+// so a local custom AI endpoint (Bifrost/Ollama) can be reached.
 func isPrivateIP(ip net.IP) bool {
+	if allowLocalCustomAPI() {
+		return false
+	}
 	if ip == nil {
 		return true // Invalid IP, treat as private
 	}
@@ -116,9 +133,11 @@ func ValidateURL(rawURL string) error {
 		"metadata.google",
 		"instance-data",
 	}
-	for _, blocked := range blockedHosts {
-		if lowerHost == blocked {
-			return &SSRFError{URL: rawURL, Reason: fmt.Sprintf("blocked hostname: %s", host)}
+	if !allowLocalCustomAPI() {
+		for _, blocked := range blockedHosts {
+			if lowerHost == blocked {
+				return &SSRFError{URL: rawURL, Reason: fmt.Sprintf("blocked hostname: %s", host)}
+			}
 		}
 	}
 
