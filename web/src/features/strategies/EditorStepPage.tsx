@@ -1,0 +1,397 @@
+import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { useStrategyDraft } from './draftStore'
+import { strategyManagerApi } from './strategyApi'
+import { buildStrategyConfig } from './strategyFactory'
+import { notify } from '../../lib/notify'
+import { api } from '../../lib/api'
+import { useAuth } from '../../contexts/AuthContext'
+
+type Mode = 'create' | 'edit'
+
+const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d']
+
+export function EditorStepPage() {
+  const navigate = useNavigate()
+  const params = useParams<{ id?: string }>()
+  const mode: Mode = params.id ? 'edit' : 'create'
+  const strategyId = params.id
+  const { scope } = useStrategyDraft()
+  const { token } = useAuth()
+  const [loading, setLoading] = useState(mode === 'edit')
+
+  const [name, setName] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const [interval, setInterval] = useState(15)
+  const [btcEthLeverage, setBtcEthLeverage] = useState(5)
+  const [altLeverage, setAltLeverage] = useState(5)
+  const [btcEthRatio, setBtcEthRatio] = useState(5)
+  const [altRatio, setAltRatio] = useState(5)
+  const [isCross, setIsCross] = useState(true)
+  const [timeframes, setTimeframes] = useState<string[]>(['15m'])
+  const [excluded, setExcluded] = useState('')
+  const [decisionEnabled, setDecisionEnabled] = useState(true)
+  const [decisionCount, setDecisionCount] = useState(8)
+  const [contextMode, setContextMode] = useState<'structured' | 'digest'>(
+    'structured'
+  )
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (mode !== 'edit' || !strategyId || !token) {
+      setLoading(false)
+      return
+    }
+    ;(async () => {
+      try {
+        const strategy = await api.getStrategy(strategyId)
+        const ai = strategy.config.ai_config
+        setName(strategy.name)
+        setPrompt(ai?.custom_prompt ?? '')
+        setBtcEthLeverage(ai?.risk_control.btc_eth_max_leverage ?? 5)
+        setAltLeverage(ai?.risk_control.altcoin_max_leverage ?? 5)
+        setBtcEthRatio(ai?.risk_control.btc_eth_max_position_value_ratio ?? 5)
+        setAltRatio(ai?.risk_control.altcoin_max_position_value_ratio ?? 5)
+        setTimeframes(ai?.indicators.klines.selected_timeframes ?? ['15m'])
+        setExcluded((ai?.coin_source.excluded_coins ?? []).join(', '))
+      } catch (err) {
+        notify.error(
+          err instanceof Error ? err.message : 'Failed to load strategy'
+        )
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [mode, strategyId, token])
+
+  const backPath =
+    mode === 'create'
+      ? '/strategy/create/scope'
+      : `/strategy/${strategyId}/edit/scope`
+
+  const toggleTimeframe = (tf: string) => {
+    setTimeframes((prev) =>
+      prev.includes(tf) ? prev.filter((t) => t !== tf) : [...prev, tf]
+    )
+  }
+
+  const handleSave = async () => {
+    if (saving) return
+    if (!name.trim()) {
+      notify.error('Strategy name is required')
+      return
+    }
+    setSaving(true)
+    try {
+      const config = buildStrategyConfig({
+        name,
+        custom_prompt: prompt,
+        scan_interval_minutes: Math.max(3, interval),
+        btcEthMaxLeverage: btcEthLeverage,
+        altcoinMaxLeverage: altLeverage,
+        btcEthPositionRatio: btcEthRatio,
+        altcoinPositionRatio: altRatio,
+        isCrossMargin: isCross,
+        selectedTimeframes: timeframes.length ? timeframes : ['15m'],
+        excludedCoins: excluded
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        decisionContext: {
+          enabled: decisionEnabled,
+          recent_count: decisionCount,
+          mode: contextMode,
+        },
+        scopeUnits: scope.units,
+        scopeMode: scope.mode,
+      })
+
+      if (mode === 'create') {
+        await strategyManagerApi.createStrategy({
+          name: name.trim(),
+          description: `Strategy using ${scope.units.length} scope(s)`,
+          config,
+        })
+        notify.success('Strategy created')
+      } else if (strategyId) {
+        await strategyManagerApi.updateStrategy(strategyId, {
+          name: name.trim(),
+          config,
+        })
+        notify.success('Strategy saved')
+      }
+      navigate('/strategy')
+    } catch (err) {
+      notify.error(
+        err instanceof Error ? err.message : 'Failed to save strategy'
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <Loader2 className="h-7 w-7 animate-spin text-nofx-gold" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate(backPath)}
+            className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg-deeper p-2 text-nofx-text-muted hover:text-nofx-text"
+            aria-label="Back to scope"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div>
+            <h1 className="text-xl font-semibold text-nofx-text">
+              {mode === 'create' ? 'New Strategy' : 'Edit Strategy'}
+            </h1>
+            <p className="mt-1 text-sm text-nofx-text-muted">
+              Step 2 of 2 · Enter Trading Strategy
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <label className="block">
+          <span className="text-sm font-medium text-nofx-text">
+            Strategy Name
+          </span>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg-deeper px-3 py-2 text-sm text-nofx-text"
+            placeholder="e.g. Hyper Top Gainers"
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-sm font-medium text-nofx-text">
+            Trading Strategy Prompt
+          </span>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            rows={4}
+            className="mt-1 w-full resize-none rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg-deeper px-3 py-2 text-sm text-nofx-text"
+            placeholder="Instructions for the AI trading loop..."
+          />
+        </label>
+
+        <fieldset className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg-deeper p-4">
+          <legend className="px-2 text-sm font-semibold text-nofx-text">
+            Basic Rules
+          </legend>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="AI decision interval (min)"
+              value={interval}
+              onChange={setInterval}
+              min={3}
+            />
+            <NumberField
+              label="Max position leverage — BTC/ETH"
+              value={btcEthLeverage}
+              onChange={setBtcEthLeverage}
+              min={1}
+              max={20}
+            />
+            <NumberField
+              label="Max position leverage — Altcoin"
+              value={altLeverage}
+              onChange={setAltLeverage}
+              min={1}
+              max={20}
+            />
+            <NumberField
+              label="Max account leverage (notional × equity) — BTC/ETH"
+              value={btcEthRatio}
+              onChange={setBtcEthRatio}
+              min={0.5}
+              max={10}
+              step={0.5}
+            />
+            <NumberField
+              label="Max account leverage (notional × equity) — Altcoin"
+              value={altRatio}
+              onChange={setAltRatio}
+              min={0.5}
+              max={10}
+              step={0.5}
+            />
+          </div>
+        </fieldset>
+
+        <fieldset className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg-deeper p-4">
+          <legend className="px-2 text-sm font-semibold text-nofx-text">
+            Advanced Settings
+          </legend>
+          <div className="mb-4">
+            <span className="text-sm text-nofx-text-muted">Position mode</span>
+            <div className="mt-1 flex gap-2">
+              <ToggleChip
+                label="Cross margin"
+                active={isCross}
+                onClick={() => setIsCross(true)}
+              />
+              <ToggleChip
+                label="Isolated"
+                active={!isCross}
+                onClick={() => setIsCross(false)}
+              />
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <span className="text-sm text-nofx-text-muted">Candles</span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {TIMEFRAMES.map((tf) => (
+                <ToggleChip
+                  key={tf}
+                  label={tf}
+                  active={timeframes.includes(tf)}
+                  onClick={() => toggleTimeframe(tf)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <label className="mb-4 block">
+            <span className="text-sm text-nofx-text-muted">
+              Excluded coins (comma separated)
+            </span>
+            <input
+              type="text"
+              value={excluded}
+              onChange={(e) => setExcluded(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-3 py-2 text-sm text-nofx-text"
+              placeholder="SAMECOIN, JUNKCOIN"
+            />
+          </label>
+
+          <div className="rounded-md border border-nofx-danger/25 bg-nofx-danger/10 p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-nofx-text">
+                Recent decisions context
+              </span>
+              <ToggleChip
+                label={decisionEnabled ? 'Enable' : 'Disable'}
+                active={decisionEnabled}
+                onClick={() => setDecisionEnabled(!decisionEnabled)}
+              />
+            </div>
+            <div className="mt-3 grid gap-3 text-nofx-text-muted sm:grid-cols-2">
+              <NumberField
+                label="Decisions in context"
+                value={decisionCount}
+                onChange={setDecisionCount}
+                min={1}
+                max={50}
+              />
+              <div>
+                <span className="text-sm">Context mode</span>
+                <div className="mt-1 flex gap-2">
+                  <ToggleChip
+                    label="Structured"
+                    active={contextMode === 'structured'}
+                    onClick={() => setContextMode('structured')}
+                  />
+                  <ToggleChip
+                    label="Digest"
+                    active={contextMode === 'digest'}
+                    onClick={() => setContextMode('digest')}
+                  />
+                </div>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-nofx-danger">
+              Runtime prompt wiring is pending backend work.
+            </p>
+          </div>
+        </fieldset>
+      </div>
+
+      <div className="mt-8 flex justify-end">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="inline-flex items-center gap-2 rounded-lg bg-nofx-gold px-5 py-2 text-sm font-semibold text-nofx-bg disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {saving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          Save Strategy
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+}: {
+  label: string
+  value: number
+  onChange: (n: number) => void
+  min: number
+  max?: number
+  step?: number
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm text-nofx-text-muted">{label}</span>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-1 w-full rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-3 py-2 text-sm text-nofx-text"
+      />
+    </label>
+  )
+}
+
+function ToggleChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border px-3 py-2 text-sm ${
+        active
+          ? 'border-nofx-gold bg-nofx-gold/10 text-nofx-gold'
+          : 'border-[rgba(26,24,19,0.14)] text-nofx-text-muted'
+      }`}
+    >
+      {label}
+    </button>
+  )
+}
