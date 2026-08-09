@@ -1,51 +1,79 @@
-# NOFX Handoff — Bifrost + Free Strategy Work
+# NOFX Handoff — Backend Implementation for Strategy Manager (+ Free/Paid Data Sources)
 
-## Goal
-Run NOFX AI traders 100% free: AI decisions via Bifrost, coin data from free Hyperliquid/Binance sources. Avoid Claw402/VergeX/NoFXOS (all paid).
+> Replacement handoff. The frontend Strategy Manager is now built and on `dev`. This session is the **backend implementation pass**. Start by reading the priority task at the bottom (verify alternative data endpoints) and `paidsource-research.md`.
 
-## Architecture found (code-verified)
-### Data sources (free vs paid)
-- **hyper_all / hyper_main / hyper_rank** — FREE. Pulled directly from Hyperliquid public API (`api.hyperliquid.xyz/info`, `metaAndAssetCtxs` / `meta`), no Claw402/NoFXOS.
-  - hyper_all = full USDC perp universe (crypto + XYZ stock/commodity)
-  - hyper_main = top N by 24h volume
-  - hyper_rank = sorted by 24h % change (gainers/losers) or volume; category crypto or XYZ
-- **vergex_signal** — PAID (x402). Needs Claw402 wallet key for coin selection + Signal Lab + liquidation heatmap.
-- **ai500 / oi_top / oi_low / NoFXOS quant / OI / netflow / price rankings** — PAID. `nofxos.ai` returns HTTP 402 for the hardcoded `DefaultAuthKey` (`cm_568c67eae410d912c54c`) — deprecated/paywalled.
-- **Raw OHLCV klines + indicators (EMA/MACD/RSI/ATR/BOLL/volume/OI/funding)** — FREE. Computed locally from Binance futures klines (`fapi.binance.com`, `market.GetWithTimeframes`).
+## Repo, branch, stack
+- Go 1.25 backend (`go.mod`, module `nofx`) + React 18/TS/Vite frontend (`web/`). Branch: `dev`. Worktree clean.
+- Backend layout: `api/` (Gin HTTP handlers), `kernel/` (strategy engine + prompt/decision), `store/` (GORM DB: sqlite/postgres), `trader/` (exchange adapters + auto-trader loop), `manager/` (trader lifecycle), `provider/` (data providers: `hyperliquid`, `nofxos`, `vergex`, `coinank`, `binance`), `mcp/` (LLM clients + x402 payment), `market/` (klines/indicators).
+- AI calls go through local **Bifrost** gateway (`custom` provider, `ALLOW_LOCAL_CUSTOM_API=1` SSRF exemption). Backend + frontend run together; `.env` holds `JWT_SECRET` etc.
 
-### Pipeline (each cycle)
-1. candidate pool (coin source) → 2. per-coin OHLCV+indicators (free, Binance) → 3. optional paid NoFXOS/VergeX (disabled in free strategies) → 4. build prompt → 5. LLM via Bifrost (custom provider) → 6. execute on CEX.
+## What shipped (frontend, on `dev`, all committed)
+A full **Strategy Manager** replacing the old `/strategy` page. New `web/src/features/strategies/`:
+- `StrategyManagerPage` (table: #, Name/Version, AUM, Symbols, 7D Yield, Sharpe, MaxDD, Last Update, NAV curve, Actions incl. **Delete** w/ confirm).
+- Two-step wizard: `ScopeStepPage` (scope cards + Overlap/Union toggle + Top-N) → `EditorStepPage` (name, prompt, interval, leverage, margin, candles, excluded coins, **decision-context** toggle).
+- `scopeCatalog.ts` (all free + paid scope cards), `draftStore.ts` (zustand), `strategyFactory.ts` (config JSON builder), `strategyApi.ts` (typed API + placeholder methods), `VersionHistoryModal` (side drawer), `tableHelpers.tsx`.
+- Wiring to existing backend: `api.createStrategy/updateStrategy/deleteStrategy/activateStrategy/duplicateStrategy/getStrategy`, `api.getTraders/getAccount/getPositions/getEquityHistoryBatch`.
+- Old `web/src/pages/StrategyStudioPage.tsx` **archived** → `web/src/pages/legacy/StrategyStudioPage.legacy.tsx` (moved, NOT deleted).
+- Trader-config leverage is seeded from the linked strategy's `risk_control` at create time, and the dashboard reads live leverage from the strategy.
+- Editing a strategy is **blocked** while a running trader uses it (stop first).
 
-### AI provider: Bifrost
-- Bifrost is the local OpenAI-compatible gateway (port 9120, model `z-ai/glm-5.2`). NOFX routes AI through it via `provider="custom"`, `custom_api_url`, no API key needed.
-- SSRF blocker: NOFX's `security/url_validator.go` blocks loopback by default; fixed via `ALLOW_LOCAL_CUSTOM_API=1` env exemption (gated; keeps SSRF on otherwise).
+## Frontend placeholders that need BACKEND implementation (priority for this session)
+These are the gaps between the completed UI and the backend. The frontend already calls these; the backend does not fully support them yet.
 
-### Key files
-- `api/handler_ai_model.go` — `handleGetSupportedModels` (determines which model cards show in frontend).
-- `security/url_validator.go` — SSRF; env-gated loopback exemption.
-- `api/handler_vergex.go` — `newVergexClientForRequest` → "claw402 wallet is not configured" when no claw402 model exists.
-- `manager/trader_manager.go:756` / `resolveTraderDataWalletKey:796` — data wallet = claw402 model's API key; falls back to any claw402 model.
-- `kernel/engine.go` — `NewStrategyEngine` (claw402 routing), `getHyperRankCoins` etc; engine requires `use_hyper_all:true` / `use_hyper_main:true` for those sources.
-- `kernel/engine_analysis.go` — `fetchMarketDataWithStrategy` (per-coin OHLCV, $15M OI liquidity filter drops low-OI candidates); `GetFullDecisionWithStrategy`.
-- `trader/auto_trader_loop.go` — `runCycle` → `GetFullDecisionWithStrategy → CallWithMessages(Bifrost)`.
-- `store/strategy.go` — `StrategyConfig`/`RiskControlConfig`/`IndicatorConfig`/`KlineConfig`; runtime params split: strategy holds coin source+indicators+risk+prompts; trader (POST /api/traders) holds `scan_interval_minutes`, `is_cross_margin`, `initial_balance`, leverage (backward-compat).
-- `store/strategy.go:182` — `ClampLimits` for `hyper_all` uses `HyperMainLimit`.
-- Frontend: `web/src/pages/StrategyStudioPage.tsx` = strategy page; `defaultCoinSource()` force-set `vergex_signal` (fixed to preserve source_type). `TraderConfigModal.tsx` reads all strategies for dropdown.
+### 1. `custom` multi-scope AND/OR resolver (MAIN step-1 backend work)
+The wizard lets a user select **multiple scope cards** and combine them via **Overlap (=AND)** or **Union (=OR)**. When >1 scopes are selected, the factory sets:
+```go
+// coin_source:
+source_type: "custom"
+scope_mode: "overlap" | "union"
+custom_scope: { scope_units: [ { id, category, source_type, direction?, limit, label, provider } ], mode }
+```
+The backend must resolve `custom_scope.scope_units[]` into a candidate pool:
+- **Union**: any candidate present in ≥1 selected source.
+- **Overlap**: candidate must be present in **all** selected sources.
+Each `scope_unit.source_type` maps to one of the single-source getters already in `kernel/engine.go` (`getAI500Coins`, `getOITopCoins`, `getOILowCoins`, `getHyperRankCoins`, `getHyperAllCoins`, `getHyperMainCoins`, `getVergexSignalCoins`). Add a `case "custom":` in `GetCandidateCoins` that builds per-source sets then intersects/unions them. NOTE: a single selected scope already maps to its concrete `source_type` (free path works); only multi-scope is `custom`.
 
-## Decisions made
-- **Use custom provider (Bifrost) for AI** instead of Claw402. Implemented via backend patch + `ALLOW_LOCAL_CUSTOM_API=1`.
-- **Use free Hyperliquid sources** for coin selection. Only **hyper_rank (top gainers + top losers, crypto only)** created.
-- **Frontend hides free options** — strategy page locked to vergex_signal; no coin-source selector, no strategy create UI. Free to surface via frontend rewrite (on laptop).
-- **Run NOFX backend as direct proot process** (not Doki container) — glibc build; Doki removed for NOFX (kept installed, small).
-- No code/build on phone going forward — build on laptop, copy binary/static assets over.
+### 2. `decision_context` prompt-builder wiring
+`ai_config.decision_context = { enabled, recent_count, mode: "structured"|"digest" }` is persisted by the UI but **unused** at runtime. Wire it into the prompt builder in `kernel/` (feed recent decisions into the system prompt when enabled; `recent_count` limits how many; `mode` chooses structured vs digest formatting).
 
-## Current state
-- Two free strategies exist (API): "Hyper Rank Top Gainers (Crypto)" and "Hyper Rank Top Losers (Crypto)", both `source_type=hyper_rank`, `category=crypto`, limit 10, ALL free indicators enabled (raw klines/EMA/MACD/RSI/ATR/BOLL/volume/OI/funding), paid NoFXOS all off.
-- One custom model (Bifrost) row; no traders currently running.
-- Frontend served statically; original `StrategyStudioPage` still shows default Claw402 strategy; new strategies visible in trader-create dropdown.
+### 3. Paid source providers (the focus of the first task)
+`vergex_signal`, `ai500`, `oi_top`, `oi_low`, and the netflow/price rankings currently require a Claw402 wallet (paid x402) or a NoFXOS auth key. See `paidsource-research.md` for every endpoint. **Goal: find public/free alternatives.** Details below under "First task".
 
-## Next steps (for laptop coding agent)
-1. Rewrite/replace `StrategyStudioPage.tsx` into a strategy manager: list, create, edit, duplicate; coin-source selector (hyper_all/main/rank/static/vergex); prompt + name + basic rules (AI interval, max leverage x2, max account leverage) + advanced (position mode, candles/indicators, excluded coins).
-2. Surface custom/model + trader-level fields if hidden.
-3. Rebuild frontend on laptop; scp static assets to phone `~/nofx/frontend/`.
-4. Consider a "Trading Pace" toggle and "decisions context" knob (currently not exposed by NOFX).
+### 4. Strategy version/snapshot endpoints
+`web/src/features/strategies/strategyApi.ts` has placeholder `getVersions`/`getVersion`/`restoreVersion` that return only the current config as a synthetic `v1` snapshot. Backend needs real endpoints:
+- `GET  /api/strategies/:id/versions`
+- `GET  /api/strategies/:id/versions/:version`
+- `POST /api/strategies/:id/restore` (snapshot-before-restore so it's reversible)
+- New DB table `strategy_versions` (version number, snapshot of `config`, note, created_at, is_current). Create snapshot v1 on strategy create, snapshot the pre-edit state as a new version on each update.
+
+### 5. Strategy-level aggregate stats
+`getStrategyStats` in `web/src/features/strategies/strategyApi.ts` returns live AUM/symbols/NAV from trader endpoints but `sevenDayYield`, `sharpe`, `maxDd` are `null` (table shows `—`). Backend needs a merged-book windowed calc: merge linked traders' equity snapshots into one curve, then compute 7D yield, Sharpe, max drawdown.
+
+## Key backend files to touch (by task)
+- **custom resolver**: `kernel/engine.go` `GetCandidateCoins` switch; reuse single-source getters.
+- **decision_context**: `kernel/engine_prompt.go` / `kernel/prompt_builder.go` system-prompt assembly; `kernel/engine_analysis.go` `GetFullDecisionWithStrategy`.
+- **paid sources**: `provider/vergex/client.go`, `provider/nofxos/*.go`, `kernel/engine.go` getters; `api/handler_vergex.go`; config for provider base URLs / auth keys (`provider/nofxos/client.go` `DefaultAuthKey`).
+- **versions endpoint**: `api/strategy.go` (new handlers near `handleGetStrategy`), `store/strategy.go` new table/methods, register routes in `api/route_registry.go` / `api/server.go`.
+- **stats endpoint**: new handler + store query that aggregates trader equity history per strategy.
+
+## Constraints to respect
+- `go vet ./...` + `gofmt` clean; frontend `tsc` + `npm test` pass if the frontend changes too.
+- English-only UI strings (frontend); backend uses `SafeError`/`SafeInternalError`/`SanitizeError` for errors (never leak internals).
+- HIGH-RISK: any change to live order/position behavior needs explicit confirmation. Stopping/deleting a trader does **NOT** close open positions by design.
+- `store.*` is the only DB access layer. All timestamps UTC.
+
+## First task — verify alternative (public/scraped) data endpoints
+Read **`paidsource-research.md`** (repo root) for the full endpoint catalog. Then, for each paid source below, the NEXT LLM should **research and verify a public/free API endpoint** that returns equivalent ranking data, and report back with concrete URLs + response shapes + a feasibility note. Do NOT implement until alternatives are confirmed:
+1. `vergex_signal` ranking (bias/score/confidence) — look for a public perp/synthetic high/low ranking.
+2. `vergex` signal-lab (per-coin structure/levels/liquidation metrics).
+3. `vergex` cost-liquidation-heatmap (price-binned long/short cost + liq clusters).
+4. `vergex` flow-markets (net inflow/outflow per market).
+5. `ai500` (AI-rated top coins) — a free momentum/cap ranking.
+6. `oi_top` / `oi_low` (open-interest change leaderboard) — e.g. CoinGlass-style OI delta.
+7. netflow (institution/retail fund flow) — CEx flow leaderboard.
+
+**Deliverable:** a short markdown (`data-alt-endpoints.md` at repo root, or extend `paidsource-research.md`) listing, per source: the public endpoint URL(s), params, exact JSON field mapping to the current `SignalRankItem`/`OIPosition`/`NetFlowPosition`/`CoinData` structs, and a GO/NO-GO. Only after that review should any code be written.
+
+## Quick verification
+- Backend: `cd /mnt/e/Users/limli/Documents/GitHub/nofx && go build ./... && go vet ./...`
+- Frontend: `cd web && npx tsc --noEmit && npm run build && npm test`

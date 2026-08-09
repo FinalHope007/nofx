@@ -6,7 +6,7 @@ Trading Workflow
    │   kernel/engine.go: getCandidatesForCycle()
    │   - SourceType=vergex_signal → getVergexSignalCoins() → vergexClient.GetSignalRanking()  [PAID x402]
    │   - SourceType=hyper_all/hyper_main/hyper_rank → Hyperliquid-native data   [FREE]
-   │   - SourceType=ai500 / oi_top / static → free NoFXOS/Hyperliquid data      [FREE]
+   │   - SourceType=ai500 / oi_top / static → paid NoFXOS/Hyperliquid data      [PAID]
    ▼
    If 0 candidates  → log "No candidate coins available, cycle skipped"  ← what's happening now (no claw402 wallet)
    ▼
