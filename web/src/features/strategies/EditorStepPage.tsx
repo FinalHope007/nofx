@@ -289,10 +289,10 @@ export function EditorStepPage() {
               <span className="text-sm font-medium text-nofx-text">
                 Recent decisions context
               </span>
-              <ToggleChip
-                label={decisionEnabled ? 'Enable' : 'Disable'}
-                active={decisionEnabled}
-                onClick={() => setDecisionEnabled(!decisionEnabled)}
+              <Toggle
+                checked={decisionEnabled}
+                onChange={() => setDecisionEnabled(!decisionEnabled)}
+                label={decisionEnabled ? 'On' : 'Off'}
               />
             </div>
             <div className="mt-3 grid gap-3 text-nofx-text-muted sm:grid-cols-2">
@@ -396,6 +396,48 @@ function ToggleChip({
       }`}
     >
       {label}
+    </button>
+  )
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean
+  onChange: () => void
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className="inline-flex items-center gap-2"
+    >
+      <span
+        data-testid="decision-toggle-track"
+        className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors ${
+          checked
+            ? 'border-nofx-gold bg-nofx-gold'
+            : 'border-[rgba(26,24,19,0.25)] bg-nofx-bg-deeper'
+        }`}
+      >
+        <span
+          className={`inline-block h-4 w-4 transform rounded-full bg-nofx-bg-lighter shadow transition-transform ${
+            checked ? 'translate-x-6' : 'translate-x-0.5'
+          }`}
+        />
+      </span>
+      <span
+        className={`text-xs font-medium ${
+          checked ? 'text-nofx-text' : 'text-nofx-text-muted'
+        }`}
+      >
+        {label}
+      </span>
     </button>
   )
 }
