@@ -24,8 +24,10 @@ import { LandingPage } from '../pages/LandingPage'
 import { BeginnerOnboardingPage } from '../pages/BeginnerOnboardingPage'
 import { DataPage } from '../pages/DataPage'
 import { SettingsPage } from '../pages/SettingsPage'
-import { StrategyStudioPage } from '../pages/StrategyStudioPage'
 import { TerminalDashboard } from '../components/terminal/TerminalDashboard'
+import { StrategyManagerPage } from '../features/strategies/StrategyManagerPage'
+import { ScopeStepPage } from '../features/strategies/ScopeStepPage'
+import { EditorStepPage } from '../features/strategies/EditorStepPage'
 import { useAuth } from '../contexts/AuthContext'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useSystemConfig } from '../hooks/useSystemConfig'
@@ -502,7 +504,55 @@ export function AppRoutes() {
           element={
             isAuthenticated ? (
               <AppChrome currentPage="strategy" animateContent>
-                <StrategyStudioPage />
+                <StrategyManagerPage />
+              </AppChrome>
+            ) : (
+              <LandingPage />
+            )
+          }
+        />
+        <Route
+          path={`${ROUTES.strategy}/create/scope`}
+          element={
+            isAuthenticated ? (
+              <AppChrome currentPage="strategy" animateContent>
+                <ScopeStepPage />
+              </AppChrome>
+            ) : (
+              <LandingPage />
+            )
+          }
+        />
+        <Route
+          path={`${ROUTES.strategy}/create/editor`}
+          element={
+            isAuthenticated ? (
+              <AppChrome currentPage="strategy" animateContent>
+                <EditorStepPage />
+              </AppChrome>
+            ) : (
+              <LandingPage />
+            )
+          }
+        />
+        <Route
+          path={`${ROUTES.strategy}/:id/edit/scope`}
+          element={
+            isAuthenticated ? (
+              <AppChrome currentPage="strategy" animateContent>
+                <ScopeStepPage />
+              </AppChrome>
+            ) : (
+              <LandingPage />
+            )
+          }
+        />
+        <Route
+          path={`${ROUTES.strategy}/:id/edit/editor`}
+          element={
+            isAuthenticated ? (
+              <AppChrome currentPage="strategy" animateContent>
+                <EditorStepPage />
               </AppChrome>
             ) : (
               <LandingPage />

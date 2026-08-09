@@ -14,11 +14,11 @@ import {
   Target,
   Trash2,
 } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
-import { useLanguage } from '../contexts/LanguageContext'
-import { DeepVoidBackground } from '../components/common/DeepVoidBackground'
-import { api } from '../lib/api'
-import { confirmToast, notify } from '../lib/notify'
+import { useAuth } from '../../contexts/AuthContext'
+import { useLanguage } from '../../contexts/LanguageContext'
+import { DeepVoidBackground } from '../../components/common/DeepVoidBackground'
+import { api } from '../../lib/api'
+import { confirmToast, notify } from '../../lib/notify'
 import type {
   AIStrategyConfig,
   CoinSourceConfig,
@@ -26,8 +26,8 @@ import type {
   RiskControlConfig,
   Strategy,
   StrategyConfig,
-} from '../types'
-import { launchAutopilot } from '../lib/launch/launchAutopilot'
+} from '../../types'
+import { launchAutopilot } from '../../lib/launch/launchAutopilot'
 import type {
   MarketSymbol,
   VergexHeatmapBin,
@@ -35,8 +35,8 @@ import type {
   VergexSignalDimension,
   VergexSignalItem,
   VergexSignalLabResponse,
-} from '../lib/api/data'
-import { buildDashboardPath, ROUTES } from '../router/paths'
+} from '../../lib/api/data'
+import { buildDashboardPath, ROUTES } from '../../router/paths'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
