@@ -1,0 +1,25 @@
+Trading Workflow
+[Timer: ScanInterval, e.g. every 5 min]
+   │  auto_trader.go: Run() loop → 1 cycle
+   ▼
+1. BUILD CANDIDATE POOL (coin selection)  ◄── Claw402/VergeX PAID here (only if source=vergex_signal)
+   │   kernel/engine.go: getCandidatesForCycle()
+   │   - SourceType=vergex_signal → getVergexSignalCoins() → vergexClient.GetSignalRanking()  [PAID x402]
+   │   - SourceType=hyper_all/hyper_main/hyper_rank → Hyperliquid-native data   [FREE]
+   │   - SourceType=ai500 / oi_top / static → free NoFXOS/Hyperliquid data      [FREE]
+   ▼
+   If 0 candidates  → log "No candidate coins available, cycle skipped"  ← what's happening now (no claw402 wallet)
+   ▼
+2. PER-COIN DETAIL DATA (fetched for the candidate pool)
+   │   FetchVergexDataBatch() → GetSignalLab + GetCostLiquidationHeatmap  [PAID x402, ONLY if source=vergex_signal]
+   │   - For non-vergex sources: only RAW OHLCV klines (free) are fetched
+   ▼
+3. BUILD SYSTEM PROMPT + CALL LLM  ◄── NOW via Bifrost (custom) — NO claw402
+   │   strategy.go: buildAIInput() → aiClient.CallWithMessages()
+   │   (claw402 used only if model provider == claw402; AI wallet is separate from data wallet)
+   ▼
+4. EXECUTE (open/close)  ◄── NO Claw402 — exchange API only (your CEX keys)
+   │   auto_trader.go: openPosition()/closePosition() → exchange (binance/okx/hyperliquid)
+   │   Balance, positions, orders all via exchange API
+   ▼
+   Record decision → back to timer
