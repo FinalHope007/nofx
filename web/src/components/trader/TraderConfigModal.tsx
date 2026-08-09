@@ -81,6 +81,7 @@ interface TraderConfigModalProps {
   availableModels?: AIModel[]
   availableExchanges?: Exchange[]
   onSave?: (data: CreateTraderRequest) => Promise<void>
+  preselectedStrategyId?: string
 }
 
 export function TraderConfigModal({
@@ -91,6 +92,7 @@ export function TraderConfigModal({
   availableModels = [],
   availableExchanges = [],
   onSave,
+  preselectedStrategyId,
 }: TraderConfigModalProps) {
   const { language } = useLanguage()
   const [formData, setFormData] = useState<FormState>({
@@ -117,7 +119,11 @@ export function TraderConfigModal({
           setStrategies(strategyList)
           // If no strategy is selected, default to the active strategy
           if (!formData.strategy_id && !isEditMode) {
-            const activeStrategy = strategyList.find((s) => s.is_active)
+            const preselected = preselectedStrategyId
+              ? strategyList.find((s) => s.id === preselectedStrategyId)
+              : undefined
+            const activeStrategy =
+              preselected ?? strategyList.find((s) => s.is_active)
             if (activeStrategy) {
               setFormData((prev) => ({
                 ...prev,
@@ -138,7 +144,7 @@ export function TraderConfigModal({
     if (isOpen) {
       fetchStrategies()
     }
-  }, [isOpen])
+  }, [isOpen, preselectedStrategyId])
 
   useEffect(() => {
     if (traderData) {

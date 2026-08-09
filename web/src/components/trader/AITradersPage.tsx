@@ -62,6 +62,9 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     Set<string>
   >(new Set())
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [preselectedStrategyId, setPreselectedStrategyId] = useState<
+    string | null
+  >(null)
 
   const loadConfigs = async () => {
     if (!user || !token) {
@@ -691,6 +694,19 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     setSearchParams(nextParams, { replace: true })
   }, [allExchanges, allModels, searchParams, setSearchParams, supportedModels, token, user])
 
+  useEffect(() => {
+    if (!user || !token) return
+    const openNew = searchParams.get('open')
+    if (openNew !== 'new') return
+    const strategyId = searchParams.get('strategy')
+    setPreselectedStrategyId(strategyId)
+    setShowCreateModal(true)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('open')
+    nextParams.delete('strategy')
+    setSearchParams(nextParams, { replace: true })
+  }, [searchParams, setSearchParams, token, user])
+
   const refreshLaunchState = async () => {
     await Promise.all([loadConfigs(), mutateTraders()])
   }
@@ -836,6 +852,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
             availableExchanges={enabledExchanges}
             onSave={handleCreateTrader}
             onClose={() => setShowCreateModal(false)}
+            preselectedStrategyId={preselectedStrategyId ?? undefined}
           />
         )}
 
