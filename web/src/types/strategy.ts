@@ -63,6 +63,7 @@ export interface AIStrategyConfig {
   custom_prompt?: string;
   risk_control: RiskControlConfig;
   prompt_sections?: PromptSectionsConfig;
+  decision_context?: DecisionContextConfig
 }
 
 export interface PublishStrategyConfig {
@@ -105,7 +106,18 @@ export interface GridStrategyConfig {
 }
 
 export interface CoinSourceConfig {
-  source_type: 'static' | 'ai500' | 'oi_top' | 'oi_low' | 'hyper_all' | 'hyper_main' | 'hyper_rank' | 'vergex_signal';
+  source_type:
+    | 'static'
+    | 'ai500'
+    | 'oi_top'
+    | 'oi_low'
+    | 'hyper_all'
+    | 'hyper_main'
+    | 'hyper_rank'
+    | 'vergex_signal'
+    | 'custom'
+  custom_scope?: CustomScopeConfig
+  scope_mode?: 'overlap' | 'union'
   static_coins?: string[];
   excluded_coins?: string[];   // List of excluded coins
   use_ai500: boolean;
@@ -209,4 +221,41 @@ export interface RiskControlConfig {
   min_position_size: number;       // Min position size in USDT (CODE ENFORCED)
   min_risk_reward_ratio: number;   // Min take_profit / stop_loss ratio (AI guided)
   min_confidence: number;          // Min AI confidence to open position (AI guided)
+}
+
+// A single selected trading-scope card (from the scope wizard step).
+export interface ScopeUnit {
+  id: string
+  category: 'crypto' | 'stock'
+  source_type:
+    | 'hyper_rank'
+    | 'ai500'
+    | 'oi_top'
+    | 'oi_low'
+    | 'vergex'
+    | 'nofxos_netflow'
+    | 'nofxos_oi'
+    | 'nofxos_price'
+    | 'other'
+  // Optional per-source qualifier (only for sources that use a direction,
+  // e.g. hyper_rank gainers/losers/volume). Absent for AI500/OI/Netflow etc.
+  direction?: 'gainers' | 'losers' | 'volume'
+  limit: number
+  label: string
+  provider: 'free' | 'paid'
+}
+
+// The full multi-scope selection plus Overlap/Union mode. Stored on the
+// strategy so the future backend can resolve candidate pools in AND/OR form.
+export interface CustomScopeConfig {
+  scope_units: ScopeUnit[]
+  mode: 'overlap' | 'union'
+}
+
+// Runtime prompt-context knobs. Backend prompt-builder wiring is pending;
+// the frontend persists these so no data is lost.
+export interface DecisionContextConfig {
+  enabled: boolean
+  recent_count: number
+  mode: 'structured' | 'digest'
 }
