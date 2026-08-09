@@ -180,6 +180,12 @@ export function TraderConfigModal({
 
     setIsSaving(true)
     try {
+      const selectedStrategy = strategies.find(
+        (s) => s.id === formData.strategy_id
+      )
+      const aiConfig = selectedStrategy
+        ? getStrategyAIConfig(selectedStrategy)
+        : null
       const saveData: CreateTraderRequest = {
         name: formData.trader_name,
         ai_model_id: formData.ai_model,
@@ -188,6 +194,13 @@ export function TraderConfigModal({
         is_cross_margin: formData.is_cross_margin,
         show_in_competition: formData.show_in_competition,
         scan_interval_minutes: formData.scan_interval_minutes,
+        // Seed the trader's stored leverage from the linked strategy's risk
+        // control so the dashboard displays the same values the strategy uses
+        // at runtime. The user can still override these in the modal.
+        btc_eth_leverage:
+          aiConfig?.risk_control?.btc_eth_max_leverage ?? undefined,
+        altcoin_leverage:
+          aiConfig?.risk_control?.altcoin_max_leverage ?? undefined,
       }
 
       await onSave(saveData)
