@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ShieldAlert, ChevronRight, Loader2 } from 'lucide-react'
 import { useStrategyDraft } from './draftStore'
 import { SCOPE_CARD_DEFS, toScopeUnit } from './scopeCatalog'
+import { strategyManagerApi } from './strategyApi'
 import type { ScopeCardDef } from './scopeCatalog'
 import type { ScopeUnit } from '../../types/strategy'
 import { api } from '../../lib/api'
@@ -59,6 +60,7 @@ export function ScopeStepPage() {
   const [topN, setTopN] = useState<Record<string, number>>({})
   const [category, setCategory] = useState<'crypto' | 'stock'>('crypto')
   const [loading, setLoading] = useState(mode === 'edit')
+  const [blocked, setBlocked] = useState<string[]>([])
 
   useEffect(() => {
     if (mode !== 'edit' || !strategyId) {
@@ -67,6 +69,13 @@ export function ScopeStepPage() {
     }
     ;(async () => {
       try {
+        const running =
+          await strategyManagerApi.getRunningTradersForStrategy(strategyId)
+        if (running.length > 0) {
+          setBlocked(running)
+          setLoading(false)
+          return
+        }
         const strategy = await api.getStrategy(strategyId)
         const coinSource = strategy.config.ai_config?.coin_source
         if (!coinSource) return
@@ -135,6 +144,43 @@ export function ScopeStepPage() {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
         <Loader2 className="h-7 w-7 animate-spin text-nofx-gold" />
+      </div>
+    )
+  }
+
+  if (blocked.length > 0) {
+    return (
+      <div className="mx-auto max-w-xl p-6">
+        <div className="rounded-lg border border-nofx-danger/30 bg-nofx-danger/10 p-6">
+          <h1 className="text-lg font-semibold text-nofx-text">
+            This strategy is in use
+          </h1>
+          <p className="mt-2 text-sm text-nofx-text-muted">
+            Editing a strategy while a trader is live on it can cause
+            discrepancies between open positions and your parameters (for
+            example, leverage changes). Stop the following trader
+            {blocked.length > 1 ? 's' : ''} before editing this strategy:
+          </p>
+          <ul className="mt-3 list-inside list-disc text-sm text-nofx-danger">
+            {blocked.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => navigate('/traders')}
+            className="mt-5 rounded-lg bg-nofx-gold px-4 py-2 text-sm font-semibold text-nofx-bg"
+          >
+            Go to Traders to stop it
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/strategy')}
+            className="ml-3 mt-5 rounded-lg border border-[rgba(26,24,19,0.14)] px-4 py-2 text-sm text-nofx-text-muted hover:text-nofx-text"
+          >
+            Back to strategies
+          </button>
+        </div>
       </div>
     )
   }

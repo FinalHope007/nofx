@@ -4,6 +4,7 @@ import { Plus, Pencil, History, Bot, Trash2, Loader2 } from 'lucide-react'
 import { strategyManagerApi, type StrategyStats } from './strategyApi'
 import { VersionHistoryModal } from './VersionHistoryModal'
 import { notify, confirmToast } from '../../lib/notify'
+import { api } from '../../lib/api'
 import type { Strategy } from '../../types/strategy'
 import { formatMoney, EquitySparkline } from './tableHelpers'
 
@@ -18,11 +19,27 @@ export function StrategyManagerPage() {
   const [loading, setLoading] = useState(true)
   const [historyFor, setHistoryFor] = useState<Strategy | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // strategy_id -> names of running traders that use it
+  const [runningByStrategy, setRunningByStrategy] = useState<
+    Map<string, string[]>
+  >(new Map())
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const strategies = await strategyManagerApi.getStrategies()
+      const [strategies, traders] = await Promise.all([
+        strategyManagerApi.getStrategies(),
+        api.getTraders(true).catch(() => []),
+      ])
+      const runningMap = new Map<string, string[]>()
+      for (const t of traders) {
+        if (t.strategy_id && t.is_running) {
+          const list = runningMap.get(t.strategy_id) ?? []
+          list.push(t.trader_name)
+          runningMap.set(t.strategy_id, list)
+        }
+      }
+      setRunningByStrategy(runningMap)
       const statsResults = await Promise.all(
         strategies.map((s) => strategyManagerApi.getStrategyStats(s.id))
       )
@@ -46,6 +63,26 @@ export function StrategyManagerPage() {
   const openInTraderAgent = (strategyId: string) => {
     navigate(`/traders?strategy=${encodeURIComponent(strategyId)}&open=new`)
   }
+
+  const runningNames = (strategyId: string): string[] =>
+    runningByStrategy.get(strategyId) ?? []
+
+  // Editing a strategy while a trader is live on it can make the live trader
+  // drift from the open positions' parameters (e.g. leverage changed). Block it
+  // and tell the user to stop the trader first.
+  const tryEdit = (strategyId: string) => {
+    const names = runningNames(strategyId)
+    if (names.length > 0) {
+      notify.warning(
+        `Stop trader${names.length > 1 ? 's' : ''} ${names.join(', ')} before editing this strategy.`
+      )
+      return
+    }
+    navigate(`/strategy/${strategyId}/edit/scope`)
+  }
+
+  const isRunning = (strategyId: string): boolean =>
+    runningNames(strategyId).length > 0
 
   const handleDelete = async (strategy: Strategy) => {
     if (deletingId) return
@@ -110,8 +147,10 @@ export function StrategyManagerPage() {
               return (
                 <tr
                   key={s.id}
-                  onClick={() => navigate(`/strategy/${s.id}/edit/scope`)}
-                  className="cursor-pointer border-b border-[rgba(26,24,19,0.14)] text-nofx-text hover:bg-nofx-bg-deeper"
+                  onClick={() => tryEdit(s.id)}
+                  className={`cursor-pointer border-b border-[rgba(26,24,19,0.14)] text-nofx-text hover:bg-nofx-bg-deeper ${
+                    isRunning(s.id) ? 'opacity-60' : ''
+                  }`}
                 >
                   <td className="px-3 py-3 text-nofx-text-muted">
                     {index + 1}
@@ -121,6 +160,11 @@ export function StrategyManagerPage() {
                     <div className="text-xs text-nofx-text-muted">
                       {s.is_active ? 'Active' : 'Inactive'}
                     </div>
+                    {isRunning(s.id) && (
+                      <div className="mt-0.5 text-[10px] text-nofx-danger">
+                        Running: {runningNames(s.id).join(', ')}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-3">{formatMoney(row.stats.aum)}</td>
                   <td className="max-w-[180px] truncate px-3 py-3 text-xs">
@@ -167,14 +211,19 @@ export function StrategyManagerPage() {
                         <Bot className="h-4 w-4" />
                       </IconBtn>
                       <IconBtn
-                        title="Edit"
-                        onClick={() => navigate(`/strategy/${s.id}/edit/scope`)}
+                        title={
+                          isRunning(s.id)
+                            ? 'Stop the running trader first to edit'
+                            : 'Edit'
+                        }
+                        disabled={isRunning(s.id)}
+                        onClick={() => tryEdit(s.id)}
                       >
                         <Pencil className="h-4 w-4" />
                       </IconBtn>
                       <IconBtn
                         title="Delete"
-                        disabled={deletingId === s.id}
+                        disabled={deletingId === s.id || isRunning(s.id)}
                         onClick={() => handleDelete(s)}
                       >
                         {deletingId === s.id ? (

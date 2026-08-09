@@ -106,6 +106,15 @@ export interface StrategyStats {
   maxDd: number | null
 }
 
+export async function getRunningTradersForStrategy(
+  strategyId: string
+): Promise<string[]> {
+  const traders = await api.getTraders(true).catch(() => [])
+  return traders
+    .filter((t) => t.strategy_id === strategyId && t.is_running)
+    .map((t) => t.trader_name)
+}
+
 export async function getStrategyStats(
   strategyId: string
 ): Promise<StrategyStats> {
@@ -176,4 +185,5 @@ export const strategyManagerApi = {
   getVersion,
   restoreVersion,
   getStrategyStats,
+  getRunningTradersForStrategy,
 }
