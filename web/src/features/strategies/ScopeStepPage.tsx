@@ -27,7 +27,13 @@ function matchConcreteScope(
   cs: import('../../types/strategy').CoinSourceConfig
 ): ScopeUnit | null {
   if (cs.source_type === 'custom') return null
-  const def = SCOPE_CARD_DEFS.find((c) => c.source_type === cs.source_type)
+  // The persisted config uses the backend's source_type union (e.g.
+  // 'vergex_signal'), while scope cards carry the wizard's scope source_type
+  // (e.g. 'vergex'). Translate so the card de/reserialization round-trips so a
+  // single scope can be prefilled on edit.
+  const scopeSource =
+    cs.source_type === 'vergex_signal' ? 'vergex' : cs.source_type
+  const def = SCOPE_CARD_DEFS.find((c) => c.source_type === scopeSource)
   if (!def) return null
   const limit =
     cs.source_type === 'ai500'
