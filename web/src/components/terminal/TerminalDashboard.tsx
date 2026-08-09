@@ -184,6 +184,14 @@ export function TerminalDashboard({
     () => api.getTraderConfig(traderId!, true),
     { refreshInterval: 120000, shouldRetryOnError: false }
   )
+  // Live leverage comes from the linked strategy's risk control (the source of
+  // truth at runtime) so it stays in sync after the strategy is edited.
+  const strategyId = selectedTrader?.strategy_id
+  const { data: liveStrategy } = useSWR(
+    strategyId ? ['strategy-config', strategyId] : null,
+    () => api.getStrategy(strategyId!),
+    { refreshInterval: 60000, shouldRetryOnError: false }
+  )
   const { data: realFlow } = useSWR(
     traderId ? ['flow-markets', traderId] : null,
     () => api.getFlowMarkets(selectedTrader?.ai_model, 'mainnet', '1h', 50, true),
@@ -230,6 +238,24 @@ export function TerminalDashboard({
   const latest = decisions && decisions.length > 0 ? decisions[0] : undefined
   const candidateCoins = latest?.candidate_coins ?? []
   const flowItems = flow?.data?.inflow ?? []
+
+  // Prefer the linked strategy's risk control (live source of truth); fall back
+  // to the trader-record snapshot for traders without a linked strategy.
+  const strategyRisk = liveStrategy?.config.ai_config?.risk_control
+  const btcEthLev =
+    strategyRisk?.btc_eth_max_leverage ?? config?.btc_eth_leverage ?? undefined
+  const altLev =
+    strategyRisk?.altcoin_max_leverage ?? config?.altcoin_leverage ?? undefined
+  // Feed risk-control panels the same effective leverage so caps stay in sync
+  // with the edited strategy rather than the stale trader snapshot.
+  const effectiveConfig =
+    btcEthLev != null || altLev != null
+      ? {
+          btc_eth_leverage: btcEthLev,
+          altcoin_leverage: altLev,
+          max_positions: strategyRisk?.max_positions,
+        }
+      : config
 
   // Both the cost/liq map and the order book follow this symbol so they stay in
   // sync. The heatmap only covers hip3_perp synthetic markets, so we pick a
@@ -412,7 +438,10 @@ export function TerminalDashboard({
             return raw.length > 16 ? raw.slice(0, 16).toUpperCase() : raw.toUpperCase()
           })()}</span>
           <span><span className="tm-sc">strategy </span>{config?.strategy_name || selectedTrader?.strategy_name || '—'}</span>
-          <span><span className="tm-sc">lev </span>{config?.btc_eth_leverage ?? '—'}× / {config?.altcoin_leverage ?? '—'}×</span>
+          <span>
+            <span className="tm-sc">lev </span>
+            {btcEthLev ?? '—'}× / {altLev ?? '—'}×
+          </span>
           <span><span className="tm-sc">scan </span>{scanMin}m</span>
           <span><span className="tm-sc">universe </span>{candidateCoins.length}</span>
           <span><span className="tm-sc">positions </span>{positions?.length ?? 0}</span>
@@ -556,7 +585,12 @@ export function TerminalDashboard({
             <ExecutionLog decisions={decisions} height={432} />
           </div>
           <div style={{ ...sc, borderRight: cellBorder }}>
-            <RiskRadar positions={positions} account={account} config={config} fullStats={fullStats} />
+            <RiskRadar
+              positions={positions}
+              account={account}
+              config={effectiveConfig}
+              fullStats={fullStats}
+            />
           </div>
           <div style={sc}>
             {/* live open positions (the book right now) */}
