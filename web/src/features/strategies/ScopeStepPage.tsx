@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ShieldAlert, ChevronRight } from 'lucide-react'
+import { ArrowLeft, ShieldAlert, ChevronRight, Loader2 } from 'lucide-react'
 import { useStrategyDraft } from './draftStore'
 import { SCOPE_CARD_DEFS, toScopeUnit } from './scopeCatalog'
 import type { ScopeCardDef } from './scopeCatalog'
 import type { ScopeUnit } from '../../types/strategy'
+import { api } from '../../lib/api'
+import { notify } from '../../lib/notify'
 
 type Mode = 'create' | 'edit'
 
@@ -21,15 +23,82 @@ function cardUnit(
   return toScopeUnit(def, existing?.limit ?? limit)
 }
 
+function matchConcreteScope(
+  cs: import('../../types/strategy').CoinSourceConfig
+): ScopeUnit | null {
+  if (cs.source_type === 'custom') return null
+  const def = SCOPE_CARD_DEFS.find((c) => c.source_type === cs.source_type)
+  if (!def) return null
+  const limit =
+    cs.source_type === 'ai500'
+      ? (cs.ai500_limit ?? def.defaultLimit)
+      : cs.source_type === 'vergex_signal'
+        ? (cs.vergex_limit ?? def.defaultLimit)
+        : (cs.hyper_rank_limit ?? def.defaultLimit)
+  return toScopeUnit(def, limit)
+}
+
 export function ScopeStepPage() {
   const navigate = useNavigate()
   const params = useParams<{ id?: string }>()
   const mode: Mode = params.id ? 'edit' : 'create'
   const strategyId = params.id
-  const { scope, mergeScopeUnit, removeScopeUnit, setScopeMode } =
-    useStrategyDraft()
+  const {
+    scope,
+    mergeScopeUnit,
+    removeScopeUnit,
+    setScopeMode,
+    setScopeUnits,
+  } = useStrategyDraft()
   const [topN, setTopN] = useState<Record<string, number>>({})
   const [category, setCategory] = useState<'crypto' | 'stock'>('crypto')
+  const [loading, setLoading] = useState(mode === 'edit')
+
+  useEffect(() => {
+    if (mode !== 'edit' || !strategyId) {
+      setLoading(false)
+      return
+    }
+    ;(async () => {
+      try {
+        const strategy = await api.getStrategy(strategyId)
+        const coinSource = strategy.config.ai_config?.coin_source
+        if (!coinSource) return
+        const seededUnits =
+          coinSource.source_type === 'custom' && coinSource.custom_scope
+            ? coinSource.custom_scope.scope_units
+            : null
+
+        if (seededUnits && seededUnits.length > 0) {
+          setScopeUnits(seededUnits)
+          setScopeMode(coinSource.custom_scope?.mode ?? scope.mode)
+          const nextTopN: Record<string, number> = {}
+          seededUnits.forEach((u) => {
+            nextTopN[u.id] = u.limit
+          })
+          setTopN(nextTopN)
+          setCategory(seededUnits[0].category)
+          return
+        }
+
+        const unit = matchConcreteScope(coinSource)
+        if (unit) {
+          setScopeUnits([unit])
+          setCategory(unit.category)
+          if (coinSource.scope_mode) {
+            setScopeMode(coinSource.scope_mode)
+          }
+          setTopN({ [unit.id]: unit.limit })
+        }
+      } catch (err) {
+        notify.error(
+          err instanceof Error ? err.message : 'Failed to load strategy scope'
+        )
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [strategyId, mode])
 
   const cards = SCOPE_CARD_DEFS.filter((c) => c.category === category)
   const nextPath =
@@ -54,6 +123,14 @@ export function ScopeStepPage() {
     if (cardActive(scope.units, def)) {
       mergeScopeUnit(cardUnit(scope.units, def, limit))
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <Loader2 className="h-7 w-7 animate-spin text-nofx-gold" />
+      </div>
+    )
   }
 
   return (

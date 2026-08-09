@@ -27,8 +27,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-export function buildCoinSource(units: ScopeUnit[]): CoinSourceConfig {
-  const mode = 'union' // ScopeStepPage persists mode into the draft; factory keeps default here
+export function buildCoinSource(
+  units: ScopeUnit[],
+  mode: 'overlap' | 'union' = 'union'
+): CoinSourceConfig {
   if (units.length > 1) {
     return {
       source_type: 'custom',
@@ -159,7 +161,7 @@ export function buildStrategyConfig(form: StrategyEditorForm): StrategyConfig {
     strategy_type: 'ai_trading',
     language: 'en',
     ai_config: {
-      coin_source: buildCoinSource(form.scopeUnits),
+      coin_source: buildCoinSource(form.scopeUnits, form.scopeMode),
       indicators: {
         klines: {
           primary_timeframe: form.selectedTimeframes[0] ?? '15m',

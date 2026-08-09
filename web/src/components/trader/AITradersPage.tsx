@@ -851,7 +851,10 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
             availableModels={enabledModels}
             availableExchanges={enabledExchanges}
             onSave={handleCreateTrader}
-            onClose={() => setShowCreateModal(false)}
+            onClose={() => {
+              setShowCreateModal(false)
+              setPreselectedStrategyId(null)
+            }}
             preselectedStrategyId={preselectedStrategyId ?? undefined}
           />
         )}

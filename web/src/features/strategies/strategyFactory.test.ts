@@ -47,6 +47,45 @@ describe('strategy factory', () => {
     expect(cs.custom_scope?.mode).toBe('union')
   })
 
+  it('persists overlap mode on a multi-scope custom source', () => {
+    const cs = buildCoinSource(
+      [freeUnit('gainers'), freeUnit('losers')],
+      'overlap'
+    )
+    expect(cs.source_type).toBe('custom')
+    expect(cs.scope_mode).toBe('overlap')
+    expect(cs.custom_scope?.mode).toBe('overlap')
+  })
+
+  it('persists overlap mode on a single concrete scope', () => {
+    const cs = buildCoinSource([freeUnit('gainers')], 'overlap')
+    expect(cs.source_type).toBe('hyper_rank')
+    expect(cs.scope_mode).toBe('overlap')
+    expect(cs.custom_scope).toBeUndefined()
+  })
+
+  it('buildStrategyConfig passes scopeMode into the coin source for a multi-scope form', () => {
+    const cfg = buildStrategyConfig({
+      name: 'Overlap',
+      custom_prompt: '',
+      scan_interval_minutes: 15,
+      btcEthMaxLeverage: 5,
+      altcoinMaxLeverage: 5,
+      btcEthPositionRatio: 5,
+      altcoinPositionRatio: 5,
+      isCrossMargin: true,
+      selectedTimeframes: ['15m'],
+      excludedCoins: [],
+      decisionContext: { enabled: true, recent_count: 8, mode: 'structured' },
+      scopeUnits: [freeUnit('gainers'), freeUnit('losers')],
+      scopeMode: 'overlap',
+    })
+    const cs = cfg.ai_config?.coin_source
+    expect(cs?.source_type).toBe('custom')
+    expect(cs?.scope_mode).toBe('overlap')
+    expect(cs?.custom_scope?.mode).toBe('overlap')
+  })
+
   it('writes the four leverage/notional controls into risk control', () => {
     const risk = defaultRiskControl({
       btcEthMaxLeverage: 5,

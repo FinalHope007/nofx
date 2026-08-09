@@ -82,6 +82,10 @@ export function EditorStepPage() {
       notify.error('Strategy name is required')
       return
     }
+    if (mode === 'edit' && scope.units.length === 0) {
+      notify.error('No trading scope selected. Finish step 1 before saving.')
+      return
+    }
     setSaving(true)
     try {
       const config = buildStrategyConfig({
