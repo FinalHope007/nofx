@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Pencil, History, Bot } from 'lucide-react'
+import { Plus, Pencil, History, Bot, Trash2, Loader2 } from 'lucide-react'
 import { strategyManagerApi, type StrategyStats } from './strategyApi'
 import { VersionHistoryModal } from './VersionHistoryModal'
-import { notify } from '../../lib/notify'
+import { notify, confirmToast } from '../../lib/notify'
 import type { Strategy } from '../../types/strategy'
 import { formatMoney, EquitySparkline } from './tableHelpers'
 
@@ -17,6 +17,7 @@ export function StrategyManagerPage() {
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [historyFor, setHistoryFor] = useState<Strategy | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -44,6 +45,26 @@ export function StrategyManagerPage() {
 
   const openInTraderAgent = (strategyId: string) => {
     navigate(`/traders?strategy=${encodeURIComponent(strategyId)}&open=new`)
+  }
+
+  const handleDelete = async (strategy: Strategy) => {
+    if (deletingId) return
+    const ok = await confirmToast(
+      `Delete strategy "${strategy.name}"? This cannot be undone.`
+    )
+    if (!ok) return
+    setDeletingId(strategy.id)
+    try {
+      await strategyManagerApi.deleteStrategy(strategy.id)
+      notify.success('Strategy deleted')
+      await load()
+    } catch (err) {
+      notify.error(
+        err instanceof Error ? err.message : 'Failed to delete strategy'
+      )
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   if (loading) {
@@ -151,6 +172,17 @@ export function StrategyManagerPage() {
                       >
                         <Pencil className="h-4 w-4" />
                       </IconBtn>
+                      <IconBtn
+                        title="Delete"
+                        disabled={deletingId === s.id}
+                        onClick={() => handleDelete(s)}
+                      >
+                        {deletingId === s.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </IconBtn>
                     </div>
                   </td>
                 </tr>
@@ -185,17 +217,20 @@ function IconBtn({
   title,
   onClick,
   children,
+  disabled = false,
 }: {
   title: string
   onClick: () => void
   children: React.ReactNode
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
       title={title}
       onClick={onClick}
-      className="rounded-lg border border-[rgba(26,24,19,0.14)] p-1.5 text-nofx-text-muted hover:text-nofx-text"
+      disabled={disabled}
+      className="rounded-lg border border-[rgba(26,24,19,0.14)] p-1.5 text-nofx-text-muted hover:text-nofx-text disabled:cursor-not-allowed disabled:opacity-40"
     >
       {children}
     </button>
