@@ -109,24 +109,49 @@ Find public / free APIs that return **similar ranking content** to each paid end
 
 ---
 
-## Paid endpoint → free alternative mapping
+## Scope card → free endpoint mapping (fill in)
 
-> Fill the **Free alternative endpoint** column as you find/settle on each. Paste the full URL (and note params/field mapping if useful) so we can pinpoint which free endpoint replaces which paid one.
+> These are the **9 paid crypto + 5 paid stock** scope cards from the frontend catalog (`web/src/features/strategies/scopeCatalog.ts`). Each card maps to a `source_type`; fill the **Free endpoint** column with the public URL you scrape from the VergeX strategy-creation page (or anywhere). The next session's LLM will analyze each endpoint, link it to the backend code (modifying the parsing if the returned shape differs from the paid endpoint), and flag any that don't link so we can decide whether to surface the data in the frontend.
 
-| # | Paid endpoint | Free alternative endpoint |
-|---|---|---|
-| 1 | `https://claw402.ai/api/v1/vergex/signal-ranking` | (paste here) |
-| 2 | `https://claw402.ai/api/v1/vergex/signal-lab` | (paste here) |
-| 3 | `https://claw402.ai/api/v1/vergex/cost-liquidation-heatmap` | (paste here) |
-| 4 | `https://claw402.ai/api/v1/vergex/flow-markets` | (paste here) |
-| 5 | `https://claw402.ai/api/v1/nofx/ai500/list` | (paste here) |
-| 6 | `https://claw402.ai/api/v1/nofx/oi/top-ranking` | (paste here) |
-| 7 | `https://claw402.ai/api/v1/nofx/oi/low-ranking` | (paste here) |
-| 8 | `https://claw402.ai/api/v1/nofx/netflow/top-ranking` | (paste here) |
-| 9 | `https://claw402.ai/api/v1/nofx/netflow/low-ranking` | (paste here) |
-| 10 | `https://claw402.ai/api/v1/nofx/price/ranking` | (paste here) |
+| # | Scope card (`id`) | `source_type` | Backend source | Free endpoint |
+|---|---|---|---|---|
+| 1 | Bias Radar (Bullish) — crypto (`crypto-bias-bull`) | `vergex` | `vergex_signal` | (paste here) |
+| 2 | Bias Radar (Bearish) — crypto (`crypto-bias-bear`) | `vergex` | `vergex_signal` | (paste here) |
+| 3 | AI500 Data Provider (`crypto-ai500`) | `ai500` | `ai500` | (paste here) |
+| 4 | OI Increase (`crypto-oi-increase`) | `nofxos_oi` | `oi_top` | (paste here) |
+| 5 | OI Decrease (`crypto-oi-decrease`) | `nofxos_oi` | `oi_low` | (paste here) |
+| 6 | Netflow Top (`crypto-netflow-top`) | `nofxos_netflow` | `netflow_*` | (paste here) |
+| 7 | Netflow Outflow Top (`crypto-netflow-outflow`) | `nofxos_netflow` | `netflow_*` | (paste here) |
+| 8 | Crypto Top Gainers (NOFXOS) (`crypto-gainers-nofxos`) | `nofxos_price` | `price_*` | (paste here) |
+| 9 | Crypto Top Losers (NOFXOS) (`crypto-losers-nofxos`) | `nofxos_price` | `price_*` | (paste here) |
+| 10 | Bias Radar (Bullish) — stock (`stock-bias-bull`) | `vergex` | `vergex_signal` | (paste here) |
+| 11 | Bias Radar (Bearish) — stock (`stock-bias-bear`) | `vergex` | `vergex_signal` | (paste here) |
+| 12 | Trending Stocks (`stock-trending`) | `vergex` | `vergex_signal` | (paste here) |
+| 13 | Stock Gainers (`stock-gainers`) | `vergex` | `vergex_signal` | (paste here) |
+| 14 | Stock Losers (`stock-losers`) | `vergex` | `vergex_signal` | (paste here) |
 
 **Notes**
-- The NoFXOS free equivalents are `https://nofxos.ai` + the same path (from `/api/...`) + `?auth=<NOFXOS_KEY>` — i.e. #5–#10 free forms are `https://nofxos.ai/api/ai500/list?auth=KEY`, etc., but those are paywalled (HTTP 402). The free entries above should be **third-party public** endpoints, not nofxos.ai.
-- Row #8 and #9 use `type=institution|personal` & `trade=future` params; the netflow ranking is also used for the `nofxos_netflow` scope card.
-- Row #10 (`price/ranking`) backs the `nofxos_price` scope card.
+- `vergex`-sourced cards all resolve via the paid `vergex_signal` path (signal-ranking → candidate pool); the stock vs crypto category is carried by `hyper_rank_category` / market-type.
+- Rows 6/7 share `nofxos_netflow`; rows 8/9 share `nofxos_price` — one free endpoint may back both rows of a pair.
+- These 14 are the PAID scope cards; the 3 free crypto `hyper_rank` cards are excluded (already free).
+
+---
+
+## Other free endpoints (not tied to a scope card)
+
+> Add any free endpoints you find that are **not** a 1:1 scope-card replacement (e.g. market-wide context: funding rates, long/short ratios, liquidations, OI aggregates, top movers, volume leaders, etc.). The next LLM will decide where each fits in the backend (prompt context, analyses, dashboards) or whether to surface to the frontend.
+
+- (paste here)
+
+---
+
+## Per-coin detail (`FetchVergexDataBatch`) free endpoints
+
+> These are the per-coin **detail** endpoints (paid via Claw402) that the backend calls for each candidate when `source_type = vergex_signal` (`kernel/engine.go` `FetchVergexDataBatch`). Add public alternatives that return equivalent per-symbol structure/liquidation data. If none link cleanly, we'll discuss whether to show the data on the frontend instead of using it in the strategy loop.
+
+| # | Paid per-coin endpoint | Purpose (fields) | Free alternative endpoint |
+|---|---|---|---|
+| 1 | `https://claw402.ai/api/v1/vergex/signal-lab` | per-coin structure read: `market`, `band`, `bias`, `confidence`, `dimensions[]`, `levels[]` (POC/magnet/resistance/support/VWAP band), `metrics[]`, `compositeZ` | (paste here) |
+| 2 | `https://claw402.ai/api/v1/vergex/cost-liquidation-heatmap` | per-coin liquidation/cost heatmap: `binStep`, `bins[]` (longCost/shortCost/longLiq/shortLiq per price band), `markPrice` | (paste here) |
+
+---
