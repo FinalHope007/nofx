@@ -113,45 +113,84 @@ Find public / free APIs that return **similar ranking content** to each paid end
 
 > These are the **9 paid crypto + 5 paid stock** scope cards from the frontend catalog (`web/src/features/strategies/scopeCatalog.ts`). Each card maps to a `source_type`; fill the **Free endpoint** column with the public URL you scrape from the VergeX strategy-creation page (or anywhere). The next session's LLM will analyze each endpoint, link it to the backend code (modifying the parsing if the returned shape differs from the paid endpoint), and flag any that don't link so we can decide whether to surface the data in the frontend.
 
-| # | Scope card (`id`) | `source_type` | Backend source | Free endpoint |
-|---|---|---|---|---|
-| 1 | Bias Radar (Bullish) — crypto (`crypto-bias-bull`) | `vergex` | `vergex_signal` | (paste here) |
-| 2 | Bias Radar (Bearish) — crypto (`crypto-bias-bear`) | `vergex` | `vergex_signal` | (paste here) |
-| 3 | AI500 Data Provider (`crypto-ai500`) | `ai500` | `ai500` | (paste here) |
-| 4 | OI Increase (`crypto-oi-increase`) | `nofxos_oi` | `oi_top` | (paste here) |
-| 5 | OI Decrease (`crypto-oi-decrease`) | `nofxos_oi` | `oi_low` | (paste here) |
-| 6 | Netflow Top (`crypto-netflow-top`) | `nofxos_netflow` | `netflow_*` | (paste here) |
-| 7 | Netflow Outflow Top (`crypto-netflow-outflow`) | `nofxos_netflow` | `netflow_*` | (paste here) |
-| 8 | Crypto Top Gainers (NOFXOS) (`crypto-gainers-nofxos`) | `nofxos_price` | `price_*` | (paste here) |
-| 9 | Crypto Top Losers (NOFXOS) (`crypto-losers-nofxos`) | `nofxos_price` | `price_*` | (paste here) |
-| 10 | Bias Radar (Bullish) — stock (`stock-bias-bull`) | `vergex` | `vergex_signal` | (paste here) |
-| 11 | Bias Radar (Bearish) — stock (`stock-bias-bear`) | `vergex` | `vergex_signal` | (paste here) |
-| 12 | Trending Stocks (`stock-trending`) | `vergex` | `vergex_signal` | (paste here) |
-| 13 | Stock Gainers (`stock-gainers`) | `vergex` | `vergex_signal` | (paste here) |
-| 14 | Stock Losers (`stock-losers`) | `vergex` | `vergex_signal` | (paste here) |
+| # | Scope card (`id`) | `source_type` | Backend source | Free endpoint | Note |
+|---|---|---|---|---|---|
+| 1 | Bias Radar (Bullish) — crypto (`crypto-bias-bull`) | `vergex` | `vergex_signal` | `https://vergex.trade/api/v1/direction-change/leaderboard` | This endpoint returns a mixed market (crypto, stocks, commodities, indices) ranking of bias radar and oi rank. Rank 1 = most bullish. Need to filter out for crypto and bullish only. |
+| 2 | Bias Radar (Bearish) — crypto (`crypto-bias-bear`) | `vergex` | `vergex_signal` | `https://vergex.trade/api/v1/direction-change/leaderboard` | Same as bullish, but for bearish access larger rank. |
+| 3 | AI500 Data Provider (`crypto-ai500`) | `ai500` | `ai500` | `https://vergex.trade/trending-category?lang=en&key=ai500` | This endpoint returns a N out of 100 score for potential candidate, alert start time and start price, and price change percentage since alert start. |
+| 4 | OI Increase (`crypto-oi-increase`) | `nofxos_oi` | `oi_top` | `https://vergex.trade/trending-crypto?tab=oi&duration=24h&limit=50` | This endpoint returns both top and low ranking oi data with the key "top" and "low" respectively. Options for duration: 5m, 15m, 30m, 1h, 4h, 8h, 12h, 24h. Includes price and price change percentage. |
+| 5 | OI Decrease (`crypto-oi-decrease`) | `nofxos_oi` | `oi_low` | `https://vergex.trade/trending-crypto?tab=oi&duration=24h&limit=50` | Same as top-ranking |
+| 6 | Netflow Top (`crypto-netflow-top`) | `nofxos_netflow` | `netflow_*` | `https://vergex.trade/trending-crypto?tab=net_flow&duration=24h&limit=50` | This endpoint returns both inflow and outflow ranking net flow data with the key "top" and "low" respectively. Options for duration: 5m, 15m, 30m, 1h, 4h, 8h, 12h, 24h. Includes price and price change percentage. 
+| 7 | Netflow Outflow Top (`crypto-netflow-outflow`) | `nofxos_netflow` | `netflow_*` | `https://vergex.trade/trending-crypto?tab=net_flow&duration=24h&limit=50` | Same as top-ranking |
+| 8 | Crypto Top Gainers (NOFXOS) (`crypto-gainers-nofxos`) | `nofxos_price` | `price_*` | `https://vergex.trade/trending-crypto?tab=price&duration=24h&limit=50` | This endpoint returns both top and low ranking price data with the key "top" and "low" respectively. Options for duration: 15m, 30m, 1h, 4h, 8h, 12h, 24h. Includes price and price change percentage. |
+| 9 | Crypto Top Losers (NOFXOS) (`crypto-losers-nofxos`) | `nofxos_price` | `price_*` | `https://vergex.trade/trending-crypto?tab=price&duration=24h&limit=50` | Same as top-ranking |
+| 10 | Bias Radar (Bullish) — stock (`stock-bias-bull`) | `vergex` | `vergex_signal` | `https://vergex.trade/api/v1/direction-change/leaderboard` | This endpoint returns a mixed market (crypto, stocks, commodities, indices) ranking of bias radar and oi rank. Rank 1 = most bullish. Need to filter out for stock and bullish only. |
+| 11 | Bias Radar (Bearish) — stock (`stock-bias-bear`) | `vergex` | `vergex_signal` | `https://vergex.trade/api/v1/direction-change/leaderboard` | Same as bullish, but for bearish access larger rank. |
+| 12 | Trending Stocks (`stock-trending`) | `vergex` | `vergex_signal` | `https://vergex.trade/api/v1/market-data/hl-stocks-hot?limit=10` | - |
+| 13 | Stock Gainers (`stock-gainers`) | `vergex` | `vergex_signal` | `https://vergex.trade/api/v1/market-data/hl-stocks-movers?direction=gainers&limit=10` | - |
+| 14 | Stock Losers (`stock-losers`) | `vergex` | `vergex_signal` | `https://vergex.trade/api/v1/market-data/hl-stocks-movers?direction=losers&limit=10` | - |
 
 **Notes**
 - `vergex`-sourced cards all resolve via the paid `vergex_signal` path (signal-ranking → candidate pool); the stock vs crypto category is carried by `hyper_rank_category` / market-type.
 - Rows 6/7 share `nofxos_netflow`; rows 8/9 share `nofxos_price` — one free endpoint may back both rows of a pair.
 - These 14 are the PAID scope cards; the 3 free crypto `hyper_rank` cards are excluded (already free).
+- All of the endpoints for candidate pools sourcing do not require authorization unlike the per-coin detail endpoint shown below.
 
 ---
 
-## Other free endpoints (not tied to a scope card)
+## Other free endpoints for candidate pools sourcing (not tied to a scope card)
 
-> Add any free endpoints you find that are **not** a 1:1 scope-card replacement (e.g. market-wide context: funding rates, long/short ratios, liquidations, OI aggregates, top movers, volume leaders, etc.). The next LLM will decide where each fits in the backend (prompt context, analyses, dashboards) or whether to surface to the frontend.
+> Add any free endpoints you find that are **not** a 1:1 scope-card replacement (e.g. market-wide context: funding rates, long/short ratios, liquidations, OI aggregates, top movers, volume leaders, etc.). The next LLM will decide where each fits in the backend (prompt context, analyses, dashboards) or whether to surface to the frontend. If none link cleanly, we'll discuss whether to show the data on the frontend instead of using it in the strategy loop.
 
-- (paste here)
+(Somewhat useful endpoints for candidate pools sourcing):
+- `https://vergex.trade/trending-crypto?tab=depth&limit=20` | This endpoint returns the top depth difference between bid and ask volumes for future and spot markets.
+- `https://vergex.trade/trending-crypto?tab=rates&limit=20` | This endpoint returns the top and low funding rate.
+- `https://vergex.trade/trending-hl?category=crypto` | This endpoint returns an unranked data for the category. Options for category: `crypto`, `stocks`, `indices`, `commodities`, `fx`, `other&sub=preipo`.
+- `https://vergex.trade/api/v1/market-data/hl-stocks-universe?sortBy=baseAsset` | Same as `https://vergex.trade/trending-hl?category=stocks`, but sorted by base asset (in alphabetical order).
+- `https://vergex.trade/api/v1/market-data/hot-assets?exchange=hyperliquid&limit=30` | This endpoint returns the top 30 hot assets on Hyperliquid, mixed markets.
+- `https://vergex.trade/api/v1/data-intelligence/flow/markets?window=1h&limit=25` | This endpoint returns the top inflow and outflow volume for the mixed markets (crypto, stocks, indices, commodities, fx) with the key `inflow` and `outflow`. Options for window: 5m, 15m, 1h, 4h, 8h, 12h, 24h. Useful for netflow analysis for market other than crypto. For crypto, see #6 or #7 (crypto-netflow-top/crypto-netflow-outflow) scope card.
+
+(Not useful endpoints but have informative descriptions for building frontend UI):
+- `https://vergex.trade/api/v1/market-data/agent-assets` | This endpoint returns all the assets available in vergex and a short description for the a list of symbols (mixed markets).
+- `https://vergex.trade/api/v1/market-data/stock-profiles` | This endpoint returns stock profiles description for the a list of stocks symbols.
+
 
 ---
 
 ## Per-coin detail (`FetchVergexDataBatch`) free endpoints
 
-> These are the per-coin **detail** endpoints (paid via Claw402) that the backend calls for each candidate when `source_type = vergex_signal` (`kernel/engine.go` `FetchVergexDataBatch`). Add public alternatives that return equivalent per-symbol structure/liquidation data. If none link cleanly, we'll discuss whether to show the data on the frontend instead of using it in the strategy loop.
+> These are the per-coin **detail** endpoints (paid via Claw402) that the backend calls for each candidate when `source_type = vergex_signal` (`kernel/engine.go` `FetchVergexDataBatch`). Add public alternatives that return equivalent per-symbol structure/liquidation data.
 
-| # | Paid per-coin endpoint | Purpose (fields) | Free alternative endpoint |
-|---|---|---|---|
-| 1 | `https://claw402.ai/api/v1/vergex/signal-lab` | per-coin structure read: `market`, `band`, `bias`, `confidence`, `dimensions[]`, `levels[]` (POC/magnet/resistance/support/VWAP band), `metrics[]`, `compositeZ` | (paste here) |
-| 2 | `https://claw402.ai/api/v1/vergex/cost-liquidation-heatmap` | per-coin liquidation/cost heatmap: `binStep`, `bins[]` (longCost/shortCost/longLiq/shortLiq per price band), `markPrice` | (paste here) |
+| # | Paid per-coin endpoint | Purpose (fields) | Free alternative endpoint | Auth | Notes |
+|---|---|---|---|---|---|
+| 1 | `https://claw402.ai/api/v1/vergex/signal-lab` | per-coin structure read: `market`, `band`, `bias`, `confidence`, `dimensions[]`, `levels[]` (POC/magnet/resistance/support/VWAP band), `metrics[]`, `compositeZ` | `https://vergex.trade/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/signals?chain=mainnet&liqBand=15` | Needed | Requires marketType+symbol (core_perp%3ABTC for crypto or hip3_perp%3AMSFT for stocks), Optional liqBand tunes the liquidation banding |
+| 2 | `https://claw402.ai/api/v1/vergex/cost-liquidation-heatmap` | per-coin liquidation/cost heatmap: `binStep`, `bins[]` (longCost/shortCost/longLiq/shortLiq per price band), `markPrice` | `https://vergex.trade/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/riskbins` | Needed | Requires marketType+symbol (core_perp%3ABTC for crypto or hip3_perp%3AMSFT for stocks), Optional liqBand tunes the liquidation banding |
+
+**Notes**
+- Most of the endpoints for per-coin detail need to include authorization headers `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMGY3MjM4M2ItOGUzYi00ZDk4LWExMTctMzE0OGZjNWI4ZjFkIiwiZW1haWwiOiJsaW1saXZlYUBnbWFpbC5jb20iLCJpc3MiOiJWZXJnZVgiLCJuYmYiOjE3ODU5MjQ0ODAsImlhdCI6MTc4NTkyNDQ4MH0.D_Jr82We4AsabFsNkC8k99vVnRYSEybfa6EwAiHKRRQ` in order to access the endpoint. I have included my current authorization headers here. We need to discuss on how the backend obtains this token in the future.
+- For /signals and /riskbins endpoints, when calling for stock market data, use this format: `https://vergex.trade/api/v1/data-intelligence/markets/hip3_perp/hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500/riskbins`, `https://vergex.trade/api/v1/data-intelligence/markets/hip3_perp/hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3AMSFT/summary`. `0x88806a71d74ad0a510b350545c9ae490912f0888` is fixed contract address for hyperliquid deployer.
 
 ---
+
+## Other free endpoints for per-coin detail sourcing (not tied to the `FetchVergexDataBatch` call)
+| Endpoint | Auth | Notes |
+| --- | --- | --- |
+(For market data):
+- `https://vergex.trade/api/v1/market-data/market-cap?symbol=BTC` | Not needed | For stock, use symbol=`SP500` or `MSFT` directly
+- https://vergex.trade/api/v1/direction-change/BTC/current | Needed | For stock, use `xyz%3ASP500` or `xyz%3AMSFT` directly
+- https://vergex.trade/api/v1/direction-change/BTC/history?type=all&page=1&page_size=20 | Needed | For stock, use `xyz%3ASP500` or `xyz%3AMSFT` directly
+- https://vergex.trade/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/summary | Needed | For stock, use `hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500` format
+- https://vergex.trade/api/v1/data-intelligence/markets/structure-overview?chain=mainnet&marketId=core_perp%3ABTC | Needed | For stock, use `hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500` format
+- https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT | Not Needed | Unknown for stocks
+
+(For position data such as position ranking, whale position changes, and position groups):
+- https://vergex.trade/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/cohorts | Needed | For stock, use `hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500` format
+- https://vergex.trade/api/v1/data-intelligence/coverage?scope=market&marketType=core_perp&marketId=core_perp%3ABTC | Needed | For stock, use `hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500` format
+- https://vergex.trade/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/group-migration?dimension=notional | Needed | For stock, use `hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500` format
+- https://vergex.trade/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/group-stats?dimension=risk | Needed | For stock, use `hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500` format
+- https://vergex.trade/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/group-stats?dimension=wallet | Needed | For stock, use `hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500` format
+- https://vergex.trade/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/holders?view=ranked&rankType=overall&limit=50 | Needed | For stock, use `hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500` format
+- https://vergex.trade/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/group-flow/snapshot-diff?dimension=notional&window=4h | Needed | For stock, use `hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500` format
+- https://vergex.trade/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/whale-activity?window=4h&minChange=10000&limit=500 | Needed | For stock, use `hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500` format
+
+- https://vergex.trade/api/v1/data-intelligence/markets?status=active&sort=openInterest&limit=50 | Needed | Get a list of market data from a list of mixed market types (crypto, stocks, and more)
