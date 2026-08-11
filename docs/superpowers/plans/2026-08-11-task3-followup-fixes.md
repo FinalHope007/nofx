@@ -488,61 +488,64 @@ git commit -m "feat(kernel): source klines from the trader's exchange (binance/h
 - Modify: `web/src/components/terminal/TerminalDashboard.tsx`
 
 **Interfaces:**
-- Consumes: `flow`/`signal` funnel layers currently sourced from global vergex flow-markets / signal-ranking endpoints keyed by `traderId`.
-- Produces: the `flow`/`signal` layers are empty/derived when the active strategy's candidates have no per-coin detail; `decision`/`execute`/`hold` layers still render from the active strategy.
+- Consumes: `flow`/`signal` funnel layers currently sourced from global vergex flow-markets / signal-ranking endpoints keyed by `traderId`; `liveStrategy` (from `api.getStrategy(strategyId)`, already fetched at lines 189-194) giving the active strategy's `ai_config.coin_source.source_type`; `candidateCoins` (line 239).
+- Produces: when the active strategy is NOT `vergex_signal`, the `flow`/`signal` funnel layers are empty (`[]`); `decision`/`execute`/`hold` still render from the active strategy's candidates/positions. When the active strategy IS `vergex_signal`, keep the current global flow/signal behavior.
 
-- [ ] **Step 1: Add per-coin detail to the funnel data contract**
+Rationale (per user): the `flow`/`signal` layers were showing DEFAULT Claw402 data even on an AI500 dashboard. The user is fine with `flow`/`signal` being empty for non-`vergex_signal` strategies as long as `decision`/`execute`/`hold` still work. The active strategy's source_type (available from `liveStrategy`) is the right gate.
 
-In `TerminalDashboard.tsx`, determine whether the decision/user-prompt data for the **selected trader** exposes per-coin detail (Signal Lab/Heatmap presence per symbol). If the backend `GetFullDecision`/`DecisionRecord` already carries per-symbol detail, derive the `signal` layer items from those symbols that have detail; otherwise leave `signal`/`flow` empty when detail is absent.
+- [ ] **Step 1: Derive the active source type**
 
-Concretely, change the `signal` layer items source so it reflects the **active strategy's** judged symbols rather than the raw global signal ranking when the active strategy is not `vergex_signal`:
+After `liveStrategy` is fetched (already at lines 189-194), add:
 
 ```tsx
-// signal layer: only symbols the active strategy actually judged this cycle
-// that carry per-coin detail; empty when the active source has none.
-const judgedSymbols = candidateCoins.map((c) => c) // candidateCoins already = active strategy's judged set
+const activeSourceType = liveStrategy?.ai_config?.coin_source?.source_type ?? ''
+const isVergexSignal = activeSourceType === 'vergex_signal'
 ```
 
-And keep `flow` layer derived from the active strategy's net-flow data when present, else empty.
+- [ ] **Step 2: Gate the `flow`/`signal` funnel layers**
 
-- [ ] **Step 2: Gate `flow`/`signal` on the active strategy, not the default**
-
-Replace the raw `flow?.data?.inflow`/`outflow` and `signalRank?.items` usage in the funnel layers (lines ~535-548) with the active-strategy-driven sets:
+In the `OrchestrationTopology` layers array (lines ~529-548), change the `flow` and `signal` layer `items` so they fall back to `[]` when the active strategy is not `vergex_signal`:
 
 ```tsx
 {
   key: 'flow',
   title: 'FLOW',
   zh: 'flow',
-  items: activeFlowItems, // [] when the active strategy has no net-flow detail
+  items: isVergexSignal
+    ? [
+        ...(flow?.data?.inflow ?? []).map((i) => ({ symbol: i.symbol, dir: 'long' as const })),
+        ...(flow?.data?.outflow ?? []).map((i) => ({ symbol: i.symbol, dir: 'short' as const })),
+      ]
+    : [],
 },
 {
   key: 'signal',
   title: 'SIGNAL',
   zh: 'signal',
-  items: activeSignalItems, // [] when the active strategy has no per-coin Signal Lab detail
+  items: isVergexSignal
+    ? (signalRank?.items ?? []).map((s) => ({
+        symbol: s.symbol,
+        dir: (s.bias || '').toLowerCase() === 'bearish' ? ('short' as const) : ('long' as const),
+      }))
+    : [],
 },
 ```
 
-Where `activeFlowItems`/`activeSignalItems` are derived from `candidateCoins` + per-coin detail (from the selected trader's verified decision data) and `[]` by default.
+Leave the `decision`/`exec`/`hold` layers unchanged (they already reflect the active strategy's `candidateCoins`/`positions`).
 
-- [ ] **Step 3: Key the data fetches on the selected trader/strategy (not default)**
-
-Verify `realFlow`/`realSignalRank` are already keyed on `traderId`/`selectedTrader` (they are, lines 195-207) and that the fallback when inactive strategy has no detail is `[]`, so AI500 shows empty `flow`/`signal` but `decision`/`execute`/`hold` still render the active strategy's candidates/positions.
-
-- [ ] **Step 4: Frontend typecheck + tests**
+- [ ] **Step 3: Frontend typecheck + tests**
 
 Run:
 ```bash
 cd web && npx tsc --noEmit && npm test
 ```
-Expected: PASS. Fix any type errors from the funnel-layer item shape.
+Expected: PASS. Fix any type errors from the conditional layer-item shape.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add web/src/components/terminal/TerminalDashboard.tsx
-git commit -m "feat(dashboard): drive funnel flow/signal layers from the active strategy"
+git commit -m "feat(dashboard): gate flow/signal funnel layers on the active strategy source type"
 ```
 
 ---
