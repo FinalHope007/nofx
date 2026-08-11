@@ -211,10 +211,10 @@ func (s *Server) setupRoutes() {
 			// Server IP query (requires authentication, for whitelist configuration)
 			s.route(protected, "GET", "/server-ip", "Get server public IP (for exchange whitelist)", s.handleGetServerIP)
 
-			s.route(protected, "GET", "/vergex/signal-ranking", "Vergex signal ranking via claw402 (?marketType=all&limit=30)", s.handleVergexSignalRanking)
-			s.route(protected, "GET", "/vergex/signal-lab", "Vergex signal lab via claw402 (?marketType=hip3_perp&symbol=AAPL)", s.handleVergexSignalLab)
-			s.route(protected, "GET", "/vergex/cost-liquidation-heatmap", "Vergex cost/liquidation heatmap via claw402 (?marketType=hip3_perp&symbol=AAPL)", s.handleVergexCostLiquidationHeatmap)
-			s.route(protected, "GET", "/vergex/flow-markets", "Vergex net-flow market ranking via claw402 (?chain=mainnet&window=1h&limit=25)", s.handleVergexFlowMarkets)
+			s.route(protected, "GET", "/vergex/signal-ranking", "Vergex signal ranking via free vergex.trade (?marketType=all&limit=30&direction=)", s.handleVergexSignalRanking)
+			s.route(protected, "GET", "/vergex/signal-lab", "Vergex signal lab via free vergex.trade (?marketType=hip3_perp&symbol=AAPL)", s.handleVergexSignalLab)
+			s.route(protected, "GET", "/vergex/cost-liquidation-heatmap", "Vergex cost/liquidation heatmap via free vergex.trade (?marketType=hip3_perp&symbol=AAPL)", s.handleVergexCostLiquidationHeatmap)
+			s.route(protected, "GET", "/vergex/flow-markets", "Vergex net-flow market ranking via free vergex.trade (?chain=mainnet&window=1h&limit=25)", s.handleVergexFlowMarkets)
 
 			// AI trader management
 			s.routeWithSchema(protected, "GET", "/my-traders", "List user's traders with status",
