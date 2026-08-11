@@ -192,6 +192,8 @@ export function TerminalDashboard({
     () => api.getStrategy(strategyId!),
     { refreshInterval: 60000, shouldRetryOnError: false }
   )
+  const activeSourceType = liveStrategy?.config.ai_config?.coin_source?.source_type ?? ''
+  const isVergexSignal = activeSourceType === 'vergex_signal'
   const { data: realFlow } = useSWR(
     traderId ? ['flow-markets', traderId] : null,
     () => api.getFlowMarkets(selectedTrader?.ai_model, 'mainnet', '1h', 50, true),
@@ -532,19 +534,23 @@ export function TerminalDashboard({
                 key: 'flow',
                 title: 'FLOW',
                 zh: 'flow',
-                items: [
-                  ...(flow?.data?.inflow ?? []).map((i) => ({ symbol: i.symbol, dir: 'long' as const })),
-                  ...(flow?.data?.outflow ?? []).map((i) => ({ symbol: i.symbol, dir: 'short' as const })),
-                ],
+                items: isVergexSignal
+                  ? [
+                      ...(flow?.data?.inflow ?? []).map((i) => ({ symbol: i.symbol, dir: 'long' as const })),
+                      ...(flow?.data?.outflow ?? []).map((i) => ({ symbol: i.symbol, dir: 'short' as const })),
+                    ]
+                  : [],
               },
               {
                 key: 'signal',
                 title: 'SIGNAL',
                 zh: 'signal',
-                items: (signalRank?.items ?? []).map((s) => ({
-                  symbol: s.symbol,
-                  dir: (s.bias || '').toLowerCase() === 'bearish' ? ('short' as const) : ('long' as const),
-                })),
+                items: isVergexSignal
+                  ? (signalRank?.items ?? []).map((s) => ({
+                      symbol: s.symbol,
+                      dir: (s.bias || '').toLowerCase() === 'bearish' ? ('short' as const) : ('long' as const),
+                    }))
+                  : [],
               },
               {
                 // every candidate the AI actually judged this cycle (its full decision set)
