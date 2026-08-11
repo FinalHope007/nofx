@@ -146,6 +146,17 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 // primaryTimeframe: primary timeframe (used for calculating current indicators), defaults to timeframes[0]
 // count: number of K-lines for each timeframe
 func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe string, count int) (*Data, error) {
+	return GetWithTimeframesWithExchange(symbol, timeframes, primaryTimeframe, count, "")
+}
+
+// GetWithTimeframesWithExchange retrieves market data for specified multiple
+// timeframes, sourcing klines from the trader's exchange when supported.
+//   - "binance"     -> Binance futures klines
+//   - "hyperliquid" -> Hyperliquid klines
+//   - otherwise     -> CoinAnk (default, current behavior)
+//
+// Signature and behavior otherwise mirror GetWithTimeframes.
+func GetWithTimeframesWithExchange(symbol string, timeframes []string, primaryTimeframe string, count int, exchange string) (*Data, error) {
 	symbol = Normalize(symbol)
 
 	if len(timeframes) == 0 {
@@ -189,11 +200,26 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 				continue
 			}
 		} else {
-			// Use CoinAnk for regular crypto assets (default to Binance)
-			klines, err = getKlinesFromCoinAnk(symbol, tf, "binance", 200)
-			if err != nil {
-				logger.Infof("⚠️ Failed to get %s %s K-line from CoinAnk: %v", symbol, tf, err)
-				continue
+			switch resolveKlineExchange(exchange) {
+			case "binance":
+				klines, err = getKlinesFromBinance(symbol, tf, 200)
+				if err != nil {
+					logger.Infof("⚠️ Failed to get %s %s K-line from Binance: %v", symbol, tf, err)
+					continue
+				}
+			case "hyperliquid":
+				klines, err = getKlinesFromHyperliquid(symbol, tf, 200)
+				if err != nil {
+					logger.Infof("⚠️ Failed to get %s %s K-line from Hyperliquid: %v", symbol, tf, err)
+					continue
+				}
+			default:
+				// Use CoinAnk for regular crypto assets (default to Binance)
+				klines, err = getKlinesFromCoinAnk(symbol, tf, "binance", 200)
+				if err != nil {
+					logger.Infof("⚠️ Failed to get %s %s K-line from CoinAnk: %v", symbol, tf, err)
+					continue
+				}
 			}
 		}
 

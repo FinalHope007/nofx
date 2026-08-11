@@ -112,6 +112,27 @@ func getKlinesFromCoinAnk(symbol, interval, exchange string, limit int) ([]Kline
 	return klines, nil
 }
 
+// resolveKlineExchange normalizes a trader exchange to the kline source:
+//   - "binance"      -> "binance" (native Binance futures klines via APIClient.GetKlines)
+//   - "hyperliquid"  -> "hyperliquid"
+//   - anything else / empty -> "" (default: CoinAnk, current behavior)
+func resolveKlineExchange(exchange string) string {
+	switch strings.ToLower(strings.TrimSpace(exchange)) {
+	case "binance":
+		return "binance"
+	case "hyperliquid":
+		return "hyperliquid"
+	default:
+		return ""
+	}
+}
+
+// getKlinesFromBinance fetches klines from the Binance USDM futures API
+// using the existing APIClient (market/api_client.go GetKlines).
+func getKlinesFromBinance(symbol, interval string, limit int) ([]Kline, error) {
+	return NewAPIClient().GetKlines(Normalize(symbol), interval, limit)
+}
+
 // getKlinesFromHyperliquid fetches kline data from Hyperliquid API for xyz dex assets
 func getKlinesFromHyperliquid(symbol, interval string, limit int) ([]Kline, error) {
 	// Pass the symbol AS-IS to GetCandles. It internally calls FormatCoinForAPI

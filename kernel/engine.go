@@ -194,6 +194,8 @@ type StrategyEngine struct {
 	// Free vergex.trade client (free-mode) + trending client (no Claw402 needed)
 	freeClient *vergex.Client
 	trending   *nofxos.FreeTrendingClient
+
+	exchange string // trader exchange used to pick the kline source
 }
 
 // NewStrategyEngine creates strategy execution engine.
@@ -290,6 +292,14 @@ func (e *StrategyEngine) GetLanguage() Language {
 		// Fall back to auto-detection from prompt content for backward compatibility
 		return detectLanguage(e.config.PromptSections.RoleDefinition)
 	}
+}
+
+// SetExchange sets the trader exchange used to pick the kline source.
+func (e *StrategyEngine) SetExchange(exchange string) {
+	if e == nil {
+		return
+	}
+	e.exchange = exchange
 }
 
 // GetConfig gets complete strategy configuration
