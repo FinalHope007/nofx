@@ -174,6 +174,42 @@ func (c *StrategyConfig) NormalizeProductSchema() {
 		if c.CoinSource.OILowLimit <= 0 {
 			c.CoinSource.OILowLimit = 3
 		}
+	case "netflow_top":
+		c.CoinSource.UseAI500 = false
+		c.CoinSource.UseOITop = false
+		c.CoinSource.UseOILow = false
+		c.CoinSource.UseHyperAll = false
+		c.CoinSource.UseHyperMain = false
+		if c.CoinSource.NetflowLimit <= 0 {
+			c.CoinSource.NetflowLimit = 10
+		}
+	case "netflow_low":
+		c.CoinSource.UseAI500 = false
+		c.CoinSource.UseOITop = false
+		c.CoinSource.UseOILow = false
+		c.CoinSource.UseHyperAll = false
+		c.CoinSource.UseHyperMain = false
+		if c.CoinSource.NetflowLimit <= 0 {
+			c.CoinSource.NetflowLimit = 10
+		}
+	case "price_top":
+		c.CoinSource.UseAI500 = false
+		c.CoinSource.UseOITop = false
+		c.CoinSource.UseOILow = false
+		c.CoinSource.UseHyperAll = false
+		c.CoinSource.UseHyperMain = false
+		if c.CoinSource.PriceLimit <= 0 {
+			c.CoinSource.PriceLimit = 10
+		}
+	case "price_low":
+		c.CoinSource.UseAI500 = false
+		c.CoinSource.UseOITop = false
+		c.CoinSource.UseOILow = false
+		c.CoinSource.UseHyperAll = false
+		c.CoinSource.UseHyperMain = false
+		if c.CoinSource.PriceLimit <= 0 {
+			c.CoinSource.PriceLimit = 10
+		}
 	case "static":
 		c.CoinSource.UseAI500 = false
 		c.CoinSource.UseOITop = false
@@ -299,6 +335,14 @@ func normalizeCoinSourceType(value string) string {
 		return "hyper_main"
 	case strings.Contains(value, "static") || strings.Contains(value, "fixed"):
 		return "static"
+	case strings.Contains(compact, "netflowtop") || strings.Contains(value, "netflow top") || strings.Contains(value, "net flow top"):
+		return "netflow_top"
+	case strings.Contains(compact, "netflowlow") || strings.Contains(value, "netflow low") || strings.Contains(value, "net flow low"):
+		return "netflow_low"
+	case strings.Contains(compact, "pricetop") || strings.Contains(value, "price top"):
+		return "price_top"
+	case strings.Contains(compact, "pricelow") || strings.Contains(value, "price low"):
+		return "price_low"
 	default:
 		return value
 	}
@@ -322,6 +366,10 @@ func inferCoinSourceType(source CoinSourceConfig) string {
 		return "vergex_signal"
 	case source.HyperRankCategory != "" || source.HyperRankDirection != "" || source.HyperRankLimit > 0:
 		return "hyper_rank"
+	case source.NetflowLimit > 0:
+		return "netflow_top"
+	case source.PriceLimit > 0:
+		return "price_top"
 	default:
 		return "vergex_signal"
 	}
@@ -827,6 +875,11 @@ type CoinSourceConfig struct {
 	VergexChain string `json:"vergex_chain,omitempty"`
 	// Vergex liquidation band query parameter.
 	VergexLiqBand string `json:"vergex_liq_band,omitempty"`
+	// Netflow/price candidate-pool limits (source_type netflow_top/low, price_top/low)
+	NetflowLimit int `json:"netflow_limit,omitempty"`
+	PriceLimit   int `json:"price_limit,omitempty"`
+	// Vergex sub-card selector: "bull"|"bear"|"trending"|"gainers"|"losers"
+	VergexDirection string `json:"vergex_direction,omitempty"`
 	// Note: API URLs are now built automatically using NofxOSAPIKey from IndicatorConfig
 }
 
