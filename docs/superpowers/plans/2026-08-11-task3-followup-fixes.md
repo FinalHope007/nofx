@@ -218,27 +218,38 @@ In `kernel/engine.go` `FetchVergexDataBatch`, delete the source-type check in th
 
 - [ ] **Step 4: Make `formatVergexData` omit-on-missing for non-vergex strategies**
 
-Change the signature to accept an `omitUnavailable bool`:
+Change the signature to accept an `omitUnavailable bool`. Implementation is **non-mutating** (operates on a shallow copy, so we never clear errors on the shared `MarketAnalysis`), and fully omits the block (header + ranking + sections) when there is no usable detail:
 
 ```go
 func (e *StrategyEngine) formatVergexData(data *vergex.MarketAnalysis, omitUnavailable bool) string {
 	if data == nil {
 		return ""
 	}
-	if omitUnavailable && len(data.SignalLab) == 0 && data.SignalLabError != "" {
-		data.SignalLabError = ""
+	// For non-vergex strategies, if neither signal-lab nor heatmap has data,
+	// render nothing at all (generic prompt stays kline-only).
+	if omitUnavailable &&
+		len(data.SignalLab) == 0 && data.SignalLabError == "" &&
+		len(data.Heatmap) == 0 && data.HeatmapError == "" {
+		return ""
 	}
-	if omitUnavailable && len(data.Heatmap) == 0 && data.HeatmapError != "" {
-		data.HeatmapError = ""
+	// Work on a shallow copy so we never mutate the shared MarketAnalysis.
+	cp := *data
+	if omitUnavailable {
+		if len(cp.SignalLab) == 0 {
+			cp.SignalLabError = ""
+		}
+		if len(cp.Heatmap) == 0 {
+			cp.HeatmapError = ""
+		}
 	}
 	var sb strings.Builder
 	sb.WriteString("\nVergex Claw402 Signals:\n")
-	sb.WriteString(vergex.FormatAnalysisForAI(data))
+	sb.WriteString(vergex.FormatAnalysisForAI(&cp))
 	return sb.String()
 }
 ```
 
-Note: `FormatAnalysisForAI` (in `provider/vergex/client.go`) only prints a section when `len(...) > 0`, and prints the error line only when `...Error != ""`. Clearing the error for omitted sections makes it render nothing for that section (blank body) — because when both `SignalLab` empty AND `SignalLabError` empty, `FormatAnalysisForAI` prints nothing for signal lab. This achieves omit-on-missing.
+Note: `FormatAnalysisForAI` (`provider/vergex/client.go`) prints a section only when `len(...) > 0`, and prints the error line only when `...Error != ""`. By clearing the error on the copy when the section is absent (and omitting the whole block when both sections absent), the generic user prompt shows only klines for no-data symbols.
 
 Update the two callers in `engine_prompt.go` to pass `omitUnavailable`, which is `false` when the strategy is `vergex_signal` and `true` otherwise:
 
