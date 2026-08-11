@@ -147,9 +147,6 @@ func enrichVergexDataWithStrategy(ctx *Context, engine *StrategyEngine) {
 	if ctx == nil || engine == nil || ctx.VergexDataMap != nil {
 		return
 	}
-	if engine.GetConfig().CoinSource.SourceType != "vergex_signal" {
-		return
-	}
 	symbolSet := make(map[string]bool)
 	symbols := make([]string, 0, len(ctx.CandidateCoins)+len(ctx.Positions))
 	for _, coin := range ctx.CandidateCoins {

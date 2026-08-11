@@ -1231,7 +1231,7 @@ func (e *StrategyEngine) FetchQuantDataBatch(symbols []string) map[string]*Quant
 
 func (e *StrategyEngine) FetchVergexDataBatch(ctx context.Context, symbols []string) map[string]*vergex.MarketAnalysis {
 	result := make(map[string]*vergex.MarketAnalysis)
-	if e == nil || e.config == nil || e.config.CoinSource.SourceType != "vergex_signal" {
+	if e == nil || e.config == nil {
 		return result
 	}
 	if e.freeClient == nil {

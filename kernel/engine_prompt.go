@@ -905,7 +905,8 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 		}
 		if ctx.VergexDataMap != nil {
 			if vergexData, hasVergex := ctx.VergexDataMap[coin.Symbol]; hasVergex {
-				sb.WriteString(e.formatVergexData(vergexData))
+				omit := e.GetConfig().CoinSource.SourceType != "vergex_signal"
+				sb.WriteString(e.formatVergexData(vergexData, omit))
 			}
 		}
 		sb.WriteString("\n")
@@ -975,7 +976,8 @@ func (e *StrategyEngine) formatPositionInfo(index int, pos PositionInfo, ctx *Co
 		}
 		if ctx.VergexDataMap != nil {
 			if vergexData, hasVergex := ctx.VergexDataMap[pos.Symbol]; hasVergex {
-				sb.WriteString(e.formatVergexData(vergexData))
+				omit := e.GetConfig().CoinSource.SourceType != "vergex_signal"
+				sb.WriteString(e.formatVergexData(vergexData, omit))
 			}
 		}
 		sb.WriteString("\n")
@@ -1046,13 +1048,28 @@ func (e *StrategyEngine) formatCoinSourceTag(sources []string) string {
 	return ""
 }
 
-func (e *StrategyEngine) formatVergexData(data *vergex.MarketAnalysis) string {
+func (e *StrategyEngine) formatVergexData(data *vergex.MarketAnalysis, omitUnavailable bool) string {
 	if data == nil {
 		return ""
 	}
+	// For non-vergex strategies, if neither signal-lab nor heatmap has data,
+	// render nothing at all (generic prompt stays kline-only).
+	if omitUnavailable && len(data.SignalLab) == 0 && len(data.Heatmap) == 0 {
+		return ""
+	}
+	// Work on a shallow copy so we never mutate the shared MarketAnalysis.
+	cp := *data
+	if omitUnavailable {
+		if len(cp.SignalLab) == 0 {
+			cp.SignalLabError = ""
+		}
+		if len(cp.Heatmap) == 0 {
+			cp.HeatmapError = ""
+		}
+	}
 	var sb strings.Builder
 	sb.WriteString("\nVergex Claw402 Signals:\n")
-	sb.WriteString(vergex.FormatAnalysisForAI(data))
+	sb.WriteString(vergex.FormatAnalysisForAI(&cp))
 	return sb.String()
 }
 
