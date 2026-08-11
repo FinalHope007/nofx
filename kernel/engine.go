@@ -190,6 +190,10 @@ type StrategyEngine struct {
 	nofxosClient       *nofxos.Client
 	vergexClient       *vergex.Client
 	vergexRankingCache map[string]*vergex.SignalRankItem
+
+	// Free vergex.trade client (free-mode) + trending client (no Claw402 needed)
+	freeClient *vergex.Client
+	trending   *nofxos.FreeTrendingClient
 }
 
 // NewStrategyEngine creates strategy execution engine.
@@ -201,6 +205,12 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 		apiKey = nofxos.DefaultAuthKey
 	}
 	client := nofxos.NewClient(nofxos.DefaultBaseURL, apiKey)
+
+	freeVergex, err := vergex.NewFreeClient(vergex.DefaultFreeBaseURL, os.Getenv("VERGEX_API_TOKEN"), &logger.MCPLogger{})
+	if err != nil {
+		logger.Warnf("⚠️ Failed to init free Vergex client: %v (using paid path only)", err)
+	}
+	trendingClient := nofxos.NewFreeTrendingClient()
 
 	// If claw402 wallet key is provided (from trader's AI config), route through claw402
 	walletKey := ""
@@ -234,6 +244,8 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 			nofxosClient:       client,
 			vergexClient:       vergexClient,
 			vergexRankingCache: make(map[string]*vergex.SignalRankItem),
+			freeClient:         freeVergex,
+			trending:           trendingClient,
 		}
 	}
 
@@ -241,6 +253,8 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 		config:             config,
 		nofxosClient:       client,
 		vergexRankingCache: make(map[string]*vergex.SignalRankItem),
+		freeClient:         freeVergex,
+		trending:           trendingClient,
 	}
 }
 
@@ -419,6 +433,7 @@ func (e *StrategyEngine) GetCandidateCoins() ([]CandidateCoin, error) {
 			coinSource.VergexLiqBand,
 			coinSource.HyperRankCategory,
 			coinSource.StaticCoins,
+			coinSource.VergexDirection,
 		)
 		if err != nil {
 			return nil, err
@@ -534,17 +549,14 @@ func (e *StrategyEngine) getAI500Coins(limit int) ([]CandidateCoin, error) {
 		limit = 30
 	}
 
-	symbols, err := e.nofxosClient.GetTopRatedCoins(limit)
+	coins, err := e.trending.GetAI500()
 	if err != nil {
 		return nil, err
 	}
-
 	var candidates []CandidateCoin
-	for _, symbol := range symbols {
-		candidates = append(candidates, CandidateCoin{
-			Symbol:  symbol,
-			Sources: []string{"ai500"},
-		})
+	for _, c := range coins {
+		symbol := market.Normalize(c.Pair)
+		candidates = append(candidates, CandidateCoin{Symbol: symbol, Sources: []string{"ai500"}})
 	}
 	return candidates, nil
 }
@@ -553,22 +565,16 @@ func (e *StrategyEngine) getOITopCoins(limit int) ([]CandidateCoin, error) {
 	if limit <= 0 {
 		limit = 10
 	}
-
-	positions, err := e.nofxosClient.GetOITopPositions()
+	positions, err := e.trending.GetOITop(limit)
 	if err != nil {
 		return nil, err
 	}
-
 	var candidates []CandidateCoin
 	for i, pos := range positions {
 		if i >= limit {
 			break
 		}
-		symbol := market.Normalize(pos.Symbol)
-		candidates = append(candidates, CandidateCoin{
-			Symbol:  symbol,
-			Sources: []string{"oi_top"},
-		})
+		candidates = append(candidates, CandidateCoin{Symbol: market.Normalize(pos.Symbol), Sources: []string{"oi_top"}})
 	}
 	return candidates, nil
 }
@@ -577,22 +583,82 @@ func (e *StrategyEngine) getOILowCoins(limit int) ([]CandidateCoin, error) {
 	if limit <= 0 {
 		limit = 10
 	}
-
-	positions, err := e.nofxosClient.GetOILowPositions()
+	positions, err := e.trending.GetOILow(limit)
 	if err != nil {
 		return nil, err
 	}
-
 	var candidates []CandidateCoin
 	for i, pos := range positions {
 		if i >= limit {
 			break
 		}
-		symbol := market.Normalize(pos.Symbol)
-		candidates = append(candidates, CandidateCoin{
-			Symbol:  symbol,
-			Sources: []string{"oi_low"},
-		})
+		candidates = append(candidates, CandidateCoin{Symbol: market.Normalize(pos.Symbol), Sources: []string{"oi_low"}})
+	}
+	return candidates, nil
+}
+
+func (e *StrategyEngine) getNetflowTopCoins(limit int) ([]CandidateCoin, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	positions, err := e.trending.GetNetFlowTop(limit)
+	if err != nil {
+		return nil, err
+	}
+	return netflowPositionsToCandidates(positions, "netflow_top", limit)
+}
+
+func (e *StrategyEngine) getNetflowLowCoins(limit int) ([]CandidateCoin, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	positions, err := e.trending.GetNetFlowLow(limit)
+	if err != nil {
+		return nil, err
+	}
+	return netflowPositionsToCandidates(positions, "netflow_low", limit)
+}
+
+func netflowPositionsToCandidates(positions []nofxos.NetFlowPosition, source string, limit int) ([]CandidateCoin, error) {
+	var candidates []CandidateCoin
+	for i, pos := range positions {
+		if i >= limit {
+			break
+		}
+		candidates = append(candidates, CandidateCoin{Symbol: market.Normalize(pos.Symbol), Sources: []string{source}})
+	}
+	return candidates, nil
+}
+
+func (e *StrategyEngine) getPriceTopCoins(limit int) ([]CandidateCoin, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	items, err := e.trending.GetPriceTop(limit)
+	if err != nil {
+		return nil, err
+	}
+	return priceItemsToCandidates(items, "price_top", limit)
+}
+
+func (e *StrategyEngine) getPriceLowCoins(limit int) ([]CandidateCoin, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	items, err := e.trending.GetPriceLow(limit)
+	if err != nil {
+		return nil, err
+	}
+	return priceItemsToCandidates(items, "price_low", limit)
+}
+
+func priceItemsToCandidates(items []nofxos.PriceRankingItem, source string, limit int) ([]CandidateCoin, error) {
+	var candidates []CandidateCoin
+	for i, it := range items {
+		if i >= limit {
+			break
+		}
+		candidates = append(candidates, CandidateCoin{Symbol: market.Normalize(it.Symbol), Sources: []string{source}})
 	}
 	return candidates, nil
 }
@@ -727,10 +793,7 @@ func (e *StrategyEngine) getHyperRankCoins(category, direction string, limit int
 	return candidates, nil
 }
 
-func (e *StrategyEngine) getVergexSignalCoins(limit int, marketType, chain, liqBand, category string, selectedSymbols []string) ([]CandidateCoin, error) {
-	if e.vergexClient == nil {
-		return nil, fmt.Errorf("vergex signal source requires a configured claw402 wallet")
-	}
+func (e *StrategyEngine) getVergexSignalCoins(limit int, marketType, chain, liqBand, category string, selectedSymbols []string, direction string) ([]CandidateCoin, error) {
 	if marketType == "" {
 		marketType = vergex.DefaultMarketType
 	}
@@ -743,19 +806,28 @@ func (e *StrategyEngine) getVergexSignalCoins(limit int, marketType, chain, liqB
 	}
 	category = strings.ToLower(strings.TrimSpace(category))
 
-	ranking, err := e.vergexClient.GetSignalRanking(context.Background(), vergex.Query{
-		Chain:   chain,
-		LiqBand: liqBand,
-	})
+	direction = strings.ToLower(strings.TrimSpace(direction))
+	var (
+		ranking *vergex.SignalRankingData
+		err     error
+	)
+	switch direction {
+	case "trending":
+		ranking, err = e.freeClient.GetStockTrending(limit)
+	case "gainers", "losers":
+		ranking, err = e.freeClient.GetStockMovers(direction, limit)
+	case "", "bull", "bear", "all":
+		ranking, err = e.freeClient.GetSignalRanking(context.Background(), vergex.Query{})
+	default:
+		ranking, err = e.freeClient.GetSignalRanking(context.Background(), vergex.Query{})
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch Vergex signal ranking: %w", err)
+		return nil, fmt.Errorf("failed to fetch Vergex data: %w", err)
 	}
 
 	rankedItems := vergex.FilterSignalRankingItems(ranking.Items, marketType, store.MaxCandidateCoins)
 	if len(rankedItems) == 0 && strings.TrimSpace(chain) != "" {
-		fallbackRanking, fallbackErr := e.vergexClient.GetSignalRanking(context.Background(), vergex.Query{
-			LiqBand: liqBand,
-		})
+		fallbackRanking, fallbackErr := e.freeClient.GetSignalRanking(context.Background(), vergex.Query{LiqBand: liqBand})
 		if fallbackErr == nil {
 			fallbackItems := vergex.FilterSignalRankingItems(fallbackRanking.Items, marketType, store.MaxCandidateCoins)
 			if len(fallbackItems) > 0 {
