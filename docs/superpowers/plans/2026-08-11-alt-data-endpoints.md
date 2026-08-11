@@ -1752,12 +1752,6 @@ VERGEX_API_TOKEN=
 Run: `go build ./... && go vet ./...`
 Expected: PASS (no code change needed in this task beyond `.env.example`).
 
-Append to `.env.example`:
-```
-# Optional vergex.trade Bearer token for per-coin detail endpoints (riskbins etc.)
-VERGEX_API_TOKEN=
-```
-
 - [ ] **Step 3: Commit**
 
 ```bash
