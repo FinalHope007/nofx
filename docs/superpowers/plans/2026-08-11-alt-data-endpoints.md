@@ -1189,6 +1189,8 @@ git commit -m "feat(nofxos): free vergex.trade trending client (oi/netflow/price
 - Consumes: free-mode `vergex.Client` (Task 4 — via `NewFreeClient(baseURL, token, logger)`), `FreeTrendingClient` (Task 5 — via `SetBaseURL`), existing `nofxosClient`/`vergexClient`.
 - Produces: `StrategyEngine` gains `freeClient *vergex.Client` (free-mode) and `trending *nofxos.FreeTrendingClient`. `getAI500Coins`, `getOITopCoins`, `getOILowCoins`, netflow/price fetchers use free clients. New handler-compatible methods for netflow/price pools.
 
+Note: as in Tasks 4/5, these tests hit `httptest` loopback servers while the clients use `security.SafeHTTPClient` (SSRF-guarded), so each test calls `t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")`.
+
 - [ ] **Step 1: Write failing tests for the new getter outputs**
 
 Create `kernel/engine_free_test.go`:
@@ -1206,6 +1208,7 @@ import (
 )
 
 func TestEngine_getOITopCoins_usesFree(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
 	srvOI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("tab") != "oi" {
 			t.Fatalf("tab=%q want oi", r.URL.Query().Get("tab"))
@@ -1229,6 +1232,7 @@ func TestEngine_getOITopCoins_usesFree(t *testing.T) {
 }
 
 func TestEngine_getVergexSignalCoins_usesFreeLeaderboard(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"items":[{"symbol":"PUMP","bias":"bullish","directionScore":4,"rank":1,"market":{"marketType":"core_perp"}}]}`))
 	}))
@@ -1449,7 +1453,23 @@ Also update the **call site** in `GetCandidateCoins` (engine.go:414-422) to the 
 		)
 ```
 
-Then keep the existing fallback/chain/`vergexRankingCache`/directional-interleave logic intact below (engine.go:754-848 still reads `ranking.Items`). If `direction == ""`, the free leaderboard/trending routes return rows without `bias`, so the directional interleave buckets them into `otherItems` and still emits them — acceptable pool behavior.
+Then keep the existing fallback/chain/`vergexRankingCache`/directional-interleave logic intact below (engine.go:754-848 still reads `ranking.Items`), WITH ONE CHANGE: the chain-fallback retry block (engine.go:754-769) must switch from `e.vergexClient` to `e.freeClient`. In free mode `e.vergexClient` is nil (no Claw402 wallet), so any fallback path that dereferences it would panic. Use:
+```go
+	if len(rankedItems) == 0 && strings.TrimSpace(chain) != "" {
+		fallbackRanking, fallbackErr := e.freeClient.GetSignalRanking(context.Background(), vergex.Query{LiqBand: liqBand})
+		if fallbackErr == nil {
+			fallbackItems := vergex.FilterSignalRankingItems(fallbackRanking.Items, marketType, store.MaxCandidateCoins)
+			if len(fallbackItems) > 0 {
+				logger.Infof("✅ Vergex signal ranking returned TradeFi items after retrying without chain filter (chain=%s)", chain)
+				ranking = fallbackRanking
+				rankedItems = fallbackItems
+			}
+		} else {
+			logger.Warnf("⚠️ Vergex signal ranking retry without chain failed: %v", fallbackErr)
+		}
+	}
+```
+If `direction == ""`, the free leaderboard rows carry no `bias`, so the directional interleave buckets them into `otherItems` and still emits them — acceptable pool behavior.
 
 - [ ] **Step 7: Run the free-engine tests**
 
