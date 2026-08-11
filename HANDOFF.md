@@ -1,6 +1,6 @@
 # NOFX Handoff — Backend Implementation for Strategy Manager (+ Free/Paid Data Sources)
 
-> Replacement handoff. The frontend Strategy Manager is now built and on `dev`. This session is the **backend implementation pass**. Start by reading the priority task at the bottom (verify alternative data endpoints) and `paidsource-research.md`.
+> Handoff. The frontend Strategy Manager is built and on `dev`. **Task 3 (paid source providers → free vergex.trade) is now DONE.** This file is the reference for the remaining backend tasks (1, 2, 4, 5 below).
 
 ## Repo, branch, stack
 - Go 1.25 backend (`go.mod`, module `nofx`) + React 18/TS/Vite frontend (`web/`). Branch: `dev`. Worktree clean.
@@ -36,8 +36,8 @@ Each `scope_unit.source_type` maps to one of the single-source getters already i
 ### 2. `decision_context` prompt-builder wiring
 `ai_config.decision_context = { enabled, recent_count, mode: "structured"|"digest" }` is persisted by the UI but **unused** at runtime. Wire it into the prompt builder in `kernel/` (feed recent decisions into the system prompt when enabled; `recent_count` limits how many; `mode` chooses structured vs digest formatting).
 
-### 3. Paid source providers (the focus of the first task)
-`vergex_signal`, `ai500`, `oi_top`, `oi_low`, and the netflow/price rankings currently require a Claw402 wallet (paid x402) or a NoFXOS auth key. See `paidsource-research.md` for every endpoint. **Goal: find public/free alternatives.** Details below under "First task".
+### 3. Paid source providers — ✅ DONE (this session)
+`vergex_signal`, `ai500`, `oi_top`, `oi_low`, and the netflow/price rankings now use **free `vergex.trade` endpoints** — no Claw402 wallet required for the candidate pool, per-coin detail, or the four frontend vergex handlers. `VERGEX_API_TOKEN` is optional (only `riskbins` needs it). See `data-alt-endpoints.md` + the follow-up fixes below. Do NOT redo this task; remaining work is only follow-ups, not the core paid→free migration.
 
 ### 4. Strategy version/snapshot endpoints
 `web/src/features/strategies/strategyApi.ts` has placeholder `getVersions`/`getVersion`/`restoreVersion` that return only the current config as a synthetic `v1` snapshot. Backend needs real endpoints:
@@ -52,7 +52,7 @@ Each `scope_unit.source_type` maps to one of the single-source getters already i
 ## Key backend files to touch (by task)
 - **custom resolver**: `kernel/engine.go` `GetCandidateCoins` switch; reuse single-source getters.
 - **decision_context**: `kernel/engine_prompt.go` / `kernel/prompt_builder.go` system-prompt assembly; `kernel/engine_analysis.go` `GetFullDecisionWithStrategy`.
-- **paid sources**: `provider/vergex/client.go`, `provider/nofxos/*.go`, `kernel/engine.go` getters; `api/handler_vergex.go`; config for provider base URLs / auth keys (`provider/nofxos/client.go` `DefaultAuthKey`).
+- **paid sources**: ✅ DONE — see `provider/vergex/client.go` (free/x402 mode switch, `FreeDetailSymbol`), `provider/nofxos/free.go`, `trader/symbols.go` (`ExchangeSymbol`), `kernel/engine.go` getters, `api/handler_vergex.go`, `data-alt-endpoints.md`. No further work here unless a new free-source gap is found.
 - **versions endpoint**: `api/strategy.go` (new handlers near `handleGetStrategy`), `store/strategy.go` new table/methods, register routes in `api/route_registry.go` / `api/server.go`.
 - **stats endpoint**: new handler + store query that aggregates trader equity history per strategy.
 
@@ -62,17 +62,32 @@ Each `scope_unit.source_type` maps to one of the single-source getters already i
 - HIGH-RISK: any change to live order/position behavior needs explicit confirmation. Stopping/deleting a trader does **NOT** close open positions by design.
 - `store.*` is the only DB access layer. All timestamps UTC.
 
-## First task — verify alternative (public/scraped) data endpoints
-Read **`paidsource-research.md`** (repo root) for the full endpoint catalog. Then, for each paid source below, the NEXT LLM should **research and verify a public/free API endpoint** that returns equivalent ranking data, and report back with concrete URLs + response shapes + a feasibility note. Do NOT implement until alternatives are confirmed:
-1. `vergex_signal` ranking (bias/score/confidence) — look for a public perp/synthetic high/low ranking.
-2. `vergex` signal-lab (per-coin structure/levels/liquidation metrics).
-3. `vergex` cost-liquidation-heatmap (price-binned long/short cost + liq clusters).
-4. `vergex` flow-markets (net inflow/outflow per market).
-5. `ai500` (AI-rated top coins) — a free momentum/cap ranking.
-6. `oi_top` / `oi_low` (open-interest change leaderboard) — e.g. CoinGlass-style OI delta.
-7. netflow (institution/retail fund flow) — CEx flow leaderboard.
+## Paid-source → free vergex.trade migration (Task 3) — ✅ completed
 
-**Deliverable:** a short markdown (`data-alt-endpoints.md` at repo root, or extend `paidsource-research.md`) listing, per source: the public endpoint URL(s), params, exact JSON field mapping to the current `SignalRankItem`/`OIPosition`/`NetFlowPosition`/`CoinData` structs, and a GO/NO-GO. Only after that review should any code be written.
+This was delivered across the `dev` branch. Key design: the existing `provider/vergex.Client` gained a free/x402 **mode switch** (`NewFreeClient`, `doFreeGET`, free path consts, optional Bearer token) reusing the same methods (`GetSignalRanking`/`GetSignalLab`/`GetCostLiquidationHeatmap`/`GetFlowMarkets`) and `ParseSignalRanking`. `provider/nofxos/free.go` adds a thin `FreeTrendingClient` for the OI/netflow/price crypto `trending-crypto` endpoints (different envelope) + ai500. The engine and the 4 vergex handlers route through the free client, and `free mode is the production default`.
+
+**Runtime follow-up fixes (all in this session, committed on `dev`):**
+- **Market-qualified per-coin detail symbol + URL-encoding** — `FreeDetailSymbol` / `resolveDetailMarket` / `stripDetailSymbolQualifier` in `provider/vergex/client.go`. Per-coin `signals`/`riskbins` use the correct symbol form (`core_perp:BTC` for crypto, `hip3_perp:0x88806a71d74ad0a510b350545c9ae490912f0888:xyz:SP500` for stock), classified by the **symbol's asset family** (not marketType), and the path prefix uses the resolved concrete market type. Fixes the 400/404 on `perp` and `hip3_perp+PUMP`.
+- **Per-coin detail for ALL source types** — removed the `vergex_signal`-only gate in `enrichVergexDataWithStrategy`/`FetchVergexDataBatch`; generic user prompt omits absent/error Signal Lab/Heatmap sections (non-mutating shallow copy). `vergex_signal` keeps its Claw402 rules prompt.
+- **Crypto/stock market-family isolation** — `filterSignalRankingItems` now excludes `hip3_perp` rows from a `core_perp` (crypto) pool (and vice versa), so a crypto-bias strategy no longer leaks stocks into the pool or 404s its detail fetch.
+- **Exchange-form symbol at the order layer** — `trader/symbols.go` `ExchangeSymbol(symbol, exchange)`; wired into the 4 order functions in `trader/auto_trader_orders.go`. `vergex_signal` crypto emits bare `XRP` (per the prompt contract), so on CEX adapters (binance/bybit/okx/bitget/gate/kucoin/aster) the order layer resolves it to `XRPUSDT` for the live calls + position matching; Hyperliquid/`xyz:` stay unchanged. Fixes Binance `code=-1121 Invalid symbol` (and analogous Gate/OKX/etc.).
+- **Per-trader-exchange kline sourcing** — `market.GetWithTimeframesWithExchange` + `StrategyEngine.exchange`; binance→Binance, hyperliquid→Hyperliquid, else→CoinAnk.
+- **Dashboard funnel** — `flow`/`signal` topology layers gated to `vergex_signal` strategies (empty otherwise); their paid x402 fetches are also gated so non-vergex dashboards stop polling them.
+
+`VERGEX_API_TOKEN` (optional): set in local `.env` for `riskbins` (heatmap) live data; it has no `exp` claim. Do not commit it.
+
+⚠️ **Verification note for the next session:** a backend rebuild + server restart is required to pick up newer commits. The free per-coin detail runtime behavior (Symbol type, market-family isolation, exchange-form symbols) was verified via unit tests + user live retests (crypto heatmap 200, Binance crypto open works); other exchanges' live order paths were not re-verified outside Binance.
+
+## Current status & next steps (start of a new session)
+
+- **Task 3 — Paid source providers: DONE** (see the migration + follow-up fixes above).
+- **Remaining backend tasks, in order of the handoff list:**
+  1. **`custom` multi-scope AND/OR resolver** (Task 1 above — the MAIN remaining backend work). Single-scope works; multi-scope emits `source_type:"custom"` which the backend does not yet handle (`GetCandidateCoins` has no `case "custom"`). Add it.
+  2. **`decision_context` prompt wiring** (Task 2 above).
+  3. **Strategy version/snapshot endpoints** (Task 4 above; placeholder `getVersions` etc. in `web/src/features/strategies/strategyApi.ts`).
+  4. **Strategy-level aggregate stats** (Task 5 above).
+- **Branch/etc.:** `dev`. Running tree clean. Frontend + backend pass `go test ./...` / `tsc --noEmit` / `npm test`.
+- **Recommended read first:** `data-alt-endpoints.md`, `paidsource-research.md`, and the Task 3 section above so you don't re-implement what's done.
 
 ## Quick verification
 - Backend: `cd /mnt/e/Users/limli/Documents/GitHub/nofx && go build ./... && go vet ./...`
