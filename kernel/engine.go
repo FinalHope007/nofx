@@ -1224,8 +1224,8 @@ func (e *StrategyEngine) FetchVergexDataBatch(ctx context.Context, symbols []str
 	if e == nil || e.config == nil || e.config.CoinSource.SourceType != "vergex_signal" {
 		return result
 	}
-	if e.vergexClient == nil {
-		logger.Warnf("⚠️ Vergex signal data skipped: claw402 wallet is not configured")
+	if e.freeClient == nil {
+		logger.Warnf("⚠️ Vergex signal data skipped: free Vergex client is not configured")
 		return result
 	}
 	if ctx == nil {
@@ -1386,7 +1386,7 @@ func (e *StrategyEngine) populateVergexDetailData(ctx context.Context, analysis 
 func (e *StrategyEngine) fetchVergexSignalLabWithFallback(ctx context.Context, query vergex.Query) (json.RawMessage, error) {
 	var lastErr error
 	for idx, candidate := range vergexDetailQueryCandidates(query) {
-		body, err := e.vergexClient.GetSignalLab(ctx, candidate)
+		body, err := e.freeClient.GetSignalLab(ctx, candidate)
 		if err == nil {
 			if idx > 0 {
 				logger.Infof("✅ Vergex signal-lab succeeded with fallback marketType=%s chain=%s", candidate.MarketType, withDefaultText(candidate.Chain, "default"))
@@ -1404,7 +1404,7 @@ func (e *StrategyEngine) fetchVergexSignalLabWithFallback(ctx context.Context, q
 func (e *StrategyEngine) fetchVergexHeatmapWithFallback(ctx context.Context, query vergex.Query) (json.RawMessage, error) {
 	var lastErr error
 	for idx, candidate := range vergexDetailQueryCandidates(query) {
-		body, err := e.vergexClient.GetCostLiquidationHeatmap(ctx, candidate)
+		body, err := e.freeClient.GetCostLiquidationHeatmap(ctx, candidate)
 		if err == nil {
 			if idx > 0 {
 				logger.Infof("✅ Vergex heatmap succeeded with fallback marketType=%s chain=%s", candidate.MarketType, withDefaultText(candidate.Chain, "default"))
