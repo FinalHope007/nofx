@@ -3,6 +3,7 @@ package vergex
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -64,5 +65,36 @@ func TestClient_GetStockMovers_freePath(t *testing.T) {
 	}
 	if len(data.Items) != 1 || data.Items[0].Symbol != "SMSN" {
 		t.Fatalf("items = %+v", data.Items)
+	}
+}
+
+func TestFreeDetailSymbol(t *testing.T) {
+	cases := []struct {
+		marketType string
+		symbol     string
+		want       string
+	}{
+		{"core_perp", "BTC", "core_perp:BTC"},
+		{"core_perp", "core_perp:BTC", "core_perp:BTC"},
+		{"hip3_perp", "xyz:SP500", "hip3_perp:0x88806a71d74ad0a510b350545c9ae490912f0888:xyz:SP500"},
+		{"hip3_perp", "SP500", "hip3_perp:0x88806a71d74ad0a510b350545c9ae490912f0888:xyz:SP500"},
+		{"all", "PUMP", "all:0x88806a71d74ad0a510b350545c9ae490912f0888:xyz:PUMP"},
+	}
+	for _, c := range cases {
+		got := FreeDetailSymbol(c.marketType, c.symbol)
+		if got != c.want {
+			t.Errorf("FreeDetailSymbol(%q, %q) = %q, want %q", c.marketType, c.symbol, got, c.want)
+		}
+	}
+}
+
+func TestDetailPathURLEncodesColons(t *testing.T) {
+	// The symbol segment must render colons as %3A so the request matches the
+	// verified working curl: .../hip3_perp/hip3_perp%3A...%3Axyz%3ASP500/riskbins
+	sym := FreeDetailSymbol("hip3_perp", "SP500")
+	enc := strings.ReplaceAll(sym, ":", "%3A")
+	want := "hip3_perp%3A0x88806a71d74ad0a510b350545c9ae490912f0888%3Axyz%3ASP500"
+	if enc != want {
+		t.Errorf("encoded = %q, want %q", enc, want)
 	}
 }

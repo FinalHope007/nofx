@@ -41,6 +41,37 @@ const (
 	FreeFlowMarketsPath  = "/api/v1/data-intelligence/flow/markets"
 )
 
+const (
+	// freeDetailXYZDeployer is the fixed Hyperliquid xyz (TradeFi) deployer
+	// address that vergex.trade free per-coin detail endpoints require for
+	// stock/index/commodity (hip3_perp) markets. Crypto core_perp markets do
+	// not use an address.
+	freeDetailXYZDeployer = "0x88806a71d74ad0a510b350545c9ae490912f0888"
+)
+
+// FreeDetailSymbol returns the market-qualified symbol that vergex.trade free
+// per-coin detail endpoints expect in the path:
+//   - crypto (core_perp):   "core_perp:BTC"
+//   - stock (hip3_perp):    "hip3_perp:0x8880...:xyz:SP500"
+//
+// The returned string still contains ':' (callers URL-encode as needed).
+func FreeDetailSymbol(marketType, symbol string) string {
+	mt := normalizeMarketType(marketType)
+	base := QuerySymbol(symbol)
+	if base == "" {
+		return ""
+	}
+	// If the symbol already carries a marketType: qualifier (e.g.
+	// "core_perp:BTC"), strip it so the bare base is extracted.
+	if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(symbol)), strings.ToUpper(marketType)+":") {
+		base = QuerySymbol(strings.TrimSpace(symbol)[len(marketType)+1:])
+	}
+	if isCoreMarketType(mt) {
+		return marketType + ":" + base
+	}
+	return marketType + ":" + freeDetailXYZDeployer + ":xyz:" + base
+}
+
 type Client struct {
 	baseURL    string
 	privateKey *ecdsa.PrivateKey
@@ -162,7 +193,8 @@ func (c *Client) GetSignalLab(ctx context.Context, q Query) (json.RawMessage, er
 		if q.LiqBand != "" {
 			params.Set("liqBand", q.LiqBand)
 		}
-		path := fmt.Sprintf(FreeSignalsPath, q.MarketType, MarketSymbol(q.MarketType, q.Symbol))
+		sym := strings.ReplaceAll(FreeDetailSymbol(q.MarketType, q.Symbol), ":", "%3A")
+		path := fmt.Sprintf(FreeSignalsPath, q.MarketType, sym)
 		return c.doGET(ctx, path, params)
 	}
 	params := url.Values{}
@@ -182,7 +214,8 @@ func (c *Client) GetCostLiquidationHeatmap(ctx context.Context, q Query) (json.R
 		if q.LiqBand != "" {
 			params.Set("liqBand", q.LiqBand)
 		}
-		path := fmt.Sprintf(FreeRiskbinsPath, q.MarketType, MarketSymbol(q.MarketType, q.Symbol))
+		sym := strings.ReplaceAll(FreeDetailSymbol(q.MarketType, q.Symbol), ":", "%3A")
+		path := fmt.Sprintf(FreeRiskbinsPath, q.MarketType, sym)
 		return c.doGET(ctx, path, params)
 	}
 	params := url.Values{}
