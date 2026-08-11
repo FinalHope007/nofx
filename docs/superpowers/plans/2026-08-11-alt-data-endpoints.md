@@ -1012,6 +1012,12 @@ func NewFreeTrendingClient() *FreeTrendingClient {
 	}
 }
 
+// SetBaseURL overrides the base URL (used by tests across packages that can't
+// reach the unexported baseURL field, e.g. kernel/engine_free_test.go).
+func (c *FreeTrendingClient) SetBaseURL(baseURL string) {
+	c.baseURL = strings.TrimRight(baseURL, "/")
+}
+
 func (c *FreeTrendingClient) GetOITop(limit int) ([]OIPosition, error) {
 	return c.getOIArray("top", limit)
 }
@@ -1385,12 +1391,72 @@ func priceItemsToCandidates(items []nofxos.PriceRankingItem, source string, limi
 }
 ```
 
-- [ ] **Step 6: Run the free-engine tests**
+- [ ] **Step 6: Re-sign `getVergexSignalCoins` to add `direction` + use the free client**
+
+The current method signature is 6-arg (engine.go:730) and its Step 1 test already targets the new 7-arg shape, so the signature must change HERE (not in Task 7) or the Step 1 test won't compile.
+
+Change the signature (engine.go:730) to:
+```go
+func (e *StrategyEngine) getVergexSignalCoins(limit int, marketType, chain, liqBand, category string, selectedSymbols []string, direction string) ([]CandidateCoin, error) {
+```
+
+Remove the wallet-required guard (engine.go:731-733) since we now use the free client:
+```go
+	if marketType == "" {
+		marketType = vergex.DefaultMarketType
+	}
+	chain = vergex.QueryChain(chain)
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > store.MaxCandidateCoins {
+		limit = store.MaxCandidateCoins
+	}
+	category = strings.ToLower(strings.TrimSpace(category))
+```
+
+Replace the paid `e.vergexClient.GetSignalRanking` fetch (engine.go:746-752) with a direction-based free fetch:
+```go
+	direction = strings.ToLower(strings.TrimSpace(direction))
+	var ranking *vergex.SignalRankingData
+	switch direction {
+	case "trending":
+		ranking, err = e.freeClient.GetStockTrending(limit)
+	case "gainers", "losers":
+		ranking, err = e.freeClient.GetStockMovers(direction, limit)
+	case "", "bull", "bear", "all":
+		ranking, err = e.freeClient.GetSignalRanking(context.Background(), vergex.Query{})
+	default:
+		ranking, err = e.freeClient.GetSignalRanking(context.Background(), vergex.Query{})
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch Vergex data: %w", err)
+	}
+```
+(Note: this reuses the existing `err` variable already declared by the surrounding code; adjust the declaration accordingly.)
+
+Also update the **call site** in `GetCandidateCoins` (engine.go:414-422) to the new 7-arg form — otherwise the package won't compile after the signature change:
+```go
+	case "vergex_signal":
+		coins, err := e.getVergexSignalCoins(
+			coinSource.VergexLimit,
+			coinSource.VergexMarketType,
+			coinSource.VergexChain,
+			coinSource.VergexLiqBand,
+			coinSource.HyperRankCategory,
+			coinSource.StaticCoins,
+			coinSource.VergexDirection,
+		)
+```
+
+Then keep the existing fallback/chain/`vergexRankingCache`/directional-interleave logic intact below (engine.go:754-848 still reads `ranking.Items`). If `direction == ""`, the free leaderboard/trending routes return rows without `bias`, so the directional interleave buckets them into `otherItems` and still emits them — acceptable pool behavior.
+
+- [ ] **Step 7: Run the free-engine tests**
 
 Run: `go test ./kernel/ -run 'TestEngine_|TestNetflow|TestPrice' -v`
-Expected: PASS.
+Expected: PASS (both Task 6 Step 1 tests now compile and pass).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add kernel/engine.go kernel/engine_free_test.go
@@ -1442,61 +1508,9 @@ In `kernel/engine.go` `GetCandidateCoins` switch, after the `oi_low` case (line 
 		return e.filterExcludedCoins(coins), nil
 ```
 
-- [ ] **Step 2: Route `vergex_direction` in `getVergexSignalCoins`**
+- [ ] **Step 2: Confirm `vergex_direction` is passed into `getVergexSignalCoins`**
 
-Modify `getVergexSignalCoins` (engine.go:730). Replace the wallet-required guard and the ranking source so it prefers the free client by direction. New guard (replace lines 731-733):
-
-```go
-	if marketType == "" {
-		marketType = vergex.DefaultMarketType
-	}
-```
-
-Replace the ranking fetch block (lines 746-769) so it uses the free client and the `vergex_direction` sub-selector. Add a `direction` parameter to the signature: change the method to accept `direction string` (the callers in `GetCandidateCoins` pass `coinSource.VergexDirection`). Update the call at line 415-422 to pass `coinSource.VergexDirection` as a new arg:
-
-```go
-	case "vergex_signal":
-		coins, err := e.getVergexSignalCoins(
-			coinSource.VergexLimit,
-			coinSource.VergexMarketType,
-			coinSource.VergexChain,
-			coinSource.VergexLiqBand,
-			coinSource.HyperRankCategory,
-			coinSource.StaticCoins,
-			coinSource.VergexDirection,
-		)
-```
-
-New signature: `func (e *StrategyEngine) getVergexSignalCoins(limit int, marketType, chain, liqBand, category string, selectedSymbols []string, direction string) ([]CandidateCoin, error)`.
-
-Inside, replace the `e.vergexClient` ranking fetch with a direction-based free fetch:
-
-```go
-	direction = strings.ToLower(strings.TrimSpace(direction))
-	var ranking *vergex.SignalRankingData
-	var fetchErr error
-	switch direction {
-	case "trending":
-		data, err := e.freeClient.GetStockTrending(limit)
-		ranking, fetchErr = data, err
-	case "gainers", "losers":
-		data, err := e.freeClient.GetStockMovers(direction, limit)
-		ranking, fetchErr = data, err
-	case "", "bull", "bear", "all":
-		data, err := e.freeClient.GetSignalRanking(context.Background(), vergex.Query{})
-		ranking, fetchErr = data, err
-	default:
-		data, err := e.freeClient.GetSignalRanking(context.Background(), vergex.Query{})
-		ranking, fetchErr = data, err
-	}
-	if fetchErr != nil {
-		return nil, fmt.Errorf("failed to fetch Vergex data: %w", fetchErr)
-	}
-```
-
-Then use `ranking.Items` in place of the old paid `ranking.Items` everywhere below (the `rankedItems := vergex.FilterSignalRankingItems(ranking.Items, ...)` and the directional selection). For the `gainers`/`losers`/`trending` free endpoints the rows carry no `bias`; the existing directional interleave (`engine.go:806-848`) will bucket them into `otherItems` and still emit them — acceptable (they are symbol pools).
-
-Note: `getVergexSignalCoins` currently errors when `e.vergexClient == nil`. Since we now use `e.freeClient`, remove that guard. The vergex detail cache (`e.vergexRankingCache`) population can stay.
+The `getVergexSignalCoins` signature + call-site update already happened in Task 6 Step 6 (passing `coinSource.VergexDirection`). Verify the `vergex_signal` case in `GetCandidateCoins` passes `coinSource.VergexDirection` as its final arg; if it doesn't, apply it now. No routing logic change is needed here.
 
 - [ ] **Step 3: Build + run free-engine + existing engine tests**
 

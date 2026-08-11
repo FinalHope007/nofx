@@ -32,6 +32,12 @@ func NewFreeTrendingClient() *FreeTrendingClient {
 	}
 }
 
+// SetBaseURL overrides the base URL (used by tests across packages that can't
+// reach the unexported baseURL field, e.g. kernel/engine_free_test.go).
+func (c *FreeTrendingClient) SetBaseURL(baseURL string) {
+	c.baseURL = strings.TrimRight(baseURL, "/")
+}
+
 func (c *FreeTrendingClient) GetOITop(limit int) ([]OIPosition, error) {
 	return c.getOIArray("top", limit)
 }
