@@ -19,14 +19,14 @@ describe('scope catalog', () => {
     const gainers = SCOPE_CARD_DEFS.find((c) => c.id === 'crypto-top-gainers')!
     const unit = toScopeUnit(gainers, 10)
     expect(unit.source_type).toBe('hyper_rank')
-    expect(unit.direction).toBe('gainers')
+    expect(unit.variant).toBe('gainers')
     expect(unit.limit).toBe(10)
     expect(unit.provider).toBe('free')
 
     const ai500 = SCOPE_CARD_DEFS.find((c) => c.id === 'crypto-ai500')!
     const aiUnit = toScopeUnit(ai500, 5)
     expect(aiUnit.source_type).toBe('ai500')
-    expect(aiUnit.direction).toBeUndefined()
+    expect(aiUnit.variant).toBeUndefined()
     expect(aiUnit.limit).toBe(5)
   })
 })
