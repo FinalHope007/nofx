@@ -5,12 +5,14 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
 	"nofx/mcp"
 	"nofx/mcp/payment"
 	"nofx/provider/hyperliquid"
+	"nofx/security"
 	"os"
 	"sort"
 	"strings"
@@ -28,6 +30,15 @@ const (
 	SignalLabPath              = "/api/v1/vergex/signal-lab"
 	CostLiquidationHeatmapPath = "/api/v1/vergex/cost-liquidation-heatmap"
 	FlowMarketsPath            = "/api/v1/vergex/flow-markets"
+	DefaultFreeBaseURL         = "https://vergex.trade"
+
+	// Free vergex.trade endpoints (no x402). Used when the client is in free mode.
+	FreeLeaderboardPath  = "/api/v1/direction-change/leaderboard"
+	FreeStocksHotPath    = "/api/v1/market-data/hl-stocks-hot"
+	FreeStocksMoversPath = "/api/v1/market-data/hl-stocks-movers"
+	FreeSignalsPath      = "/api/v1/data-intelligence/markets/%s/%s/signals"
+	FreeRiskbinsPath     = "/api/v1/data-intelligence/markets/%s/%s/riskbins"
+	FreeFlowMarketsPath  = "/api/v1/data-intelligence/flow/markets"
 )
 
 type Client struct {
@@ -35,6 +46,8 @@ type Client struct {
 	privateKey *ecdsa.PrivateKey
 	httpClient *http.Client
 	logger     mcp.Logger
+	freeMode   bool   // true: plain HTTP GET on vergex.trade; false: x402 paid
+	authToken  string // optional Bearer token for free-mode authed endpoints
 }
 
 type Query struct {
@@ -101,8 +114,34 @@ func NewClient(baseURL, privateKeyHex string, logger mcp.Logger) (*Client, error
 	}, nil
 }
 
+// NewFreeClient builds a vergex client for the free vergex.trade endpoints.
+// No Claw402 wallet is required; requests are plain HTTP GETs (optionally
+// carrying a Bearer token for authed per-coin detail endpoints).
+func NewFreeClient(baseURL, authToken string, logger mcp.Logger) (*Client, error) {
+	if baseURL == "" {
+		baseURL = strings.TrimRight(DefaultFreeBaseURL, "/")
+	}
+	if logger == nil {
+		logger = mcp.NewNoopLogger()
+	}
+	return &Client{
+		baseURL:    baseURL,
+		httpClient: security.SafeHTTPClient(30 * time.Second),
+		logger:     logger,
+		freeMode:   true,
+		authToken:  strings.TrimSpace(authToken),
+	}, nil
+}
+
 func (c *Client) GetSignalRanking(ctx context.Context, q Query) (*SignalRankingData, error) {
 	params := url.Values{}
+	if c.freeMode {
+		body, err := c.doGET(ctx, FreeLeaderboardPath, params)
+		if err != nil {
+			return nil, err
+		}
+		return ParseSignalRanking(body)
+	}
 	addQueryDefaults(params, q, false)
 	body, err := c.doGET(ctx, SignalRankingPath, params)
 	if err != nil {
@@ -115,6 +154,17 @@ func (c *Client) GetSignalLab(ctx context.Context, q Query) (json.RawMessage, er
 	if strings.TrimSpace(q.MarketType) == "" || strings.TrimSpace(q.Symbol) == "" {
 		return nil, fmt.Errorf("marketType and symbol are required")
 	}
+	if c.freeMode {
+		params := url.Values{}
+		if q.Chain != "" {
+			params.Set("chain", QueryChain(q.Chain))
+		}
+		if q.LiqBand != "" {
+			params.Set("liqBand", q.LiqBand)
+		}
+		path := fmt.Sprintf(FreeSignalsPath, q.MarketType, MarketSymbol(q.MarketType, q.Symbol))
+		return c.doGET(ctx, path, params)
+	}
 	params := url.Values{}
 	addQueryDefaults(params, q, true)
 	return c.doGET(ctx, SignalLabPath, params)
@@ -123,6 +173,17 @@ func (c *Client) GetSignalLab(ctx context.Context, q Query) (json.RawMessage, er
 func (c *Client) GetCostLiquidationHeatmap(ctx context.Context, q Query) (json.RawMessage, error) {
 	if strings.TrimSpace(q.MarketType) == "" || strings.TrimSpace(q.Symbol) == "" {
 		return nil, fmt.Errorf("marketType and symbol are required")
+	}
+	if c.freeMode {
+		params := url.Values{}
+		if q.Chain != "" {
+			params.Set("chain", QueryChain(q.Chain))
+		}
+		if q.LiqBand != "" {
+			params.Set("liqBand", q.LiqBand)
+		}
+		path := fmt.Sprintf(FreeRiskbinsPath, q.MarketType, MarketSymbol(q.MarketType, q.Symbol))
+		return c.doGET(ctx, path, params)
 	}
 	params := url.Values{}
 	addQueryDefaults(params, q, true)
@@ -144,7 +205,38 @@ func (c *Client) GetFlowMarkets(ctx context.Context, chain, window string, limit
 	if limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", limit))
 	}
-	return c.doGET(ctx, FlowMarketsPath, params)
+	path := FlowMarketsPath
+	if c.freeMode {
+		path = FreeFlowMarketsPath
+	}
+	return c.doGET(ctx, path, params)
+}
+
+// GetStockTrending returns the hot/trending US stocks list (free endpoint).
+func (c *Client) GetStockTrending(limit int) (*SignalRankingData, error) {
+	params := url.Values{}
+	if limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	body, err := c.doGET(context.Background(), FreeStocksHotPath, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSignalRanking(body)
+}
+
+// GetStockMovers returns stock gainers (direction=gainers) or losers (direction=losers).
+func (c *Client) GetStockMovers(direction string, limit int) (*SignalRankingData, error) {
+	params := url.Values{}
+	params.Set("direction", direction)
+	if limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	body, err := c.doGET(context.Background(), FreeStocksMoversPath, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSignalRanking(body)
 }
 
 func addQueryDefaults(params url.Values, q Query, includeMarket bool) {
@@ -175,6 +267,9 @@ func (c *Client) doGET(ctx context.Context, path string, params url.Values) ([]b
 	if encoded := params.Encode(); encoded != "" {
 		fullURL += "?" + encoded
 	}
+	if c.freeMode {
+		return c.doFreeGET(ctx, fullURL)
+	}
 
 	buildReq := func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
@@ -197,6 +292,32 @@ func (c *Client) doGET(ctx context.Context, path string, params url.Values) ([]b
 		return nil, fmt.Errorf("vergex request failed (%s): %w", path, err)
 	}
 	return body, nil
+}
+
+// doFreeGET performs a plain HTTPS GET to a vergex.trade endpoint, attaching
+// the optional Bearer token. Returns raw body bytes or an error.
+func (c *Client) doFreeGET(ctx context.Context, fullURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("vergex free request: %w", err)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; nofx)")
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("vergex free GET %s: %w", fullURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return io.ReadAll(resp.Body)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("vergex token rejected (401) for %s", fullURL)
+	}
+	return nil, fmt.Errorf("vergex free GET %s: HTTP %d: %s", fullURL, resp.StatusCode, strings.TrimSpace(string(b)))
 }
 
 func ParseSignalRanking(body []byte) (*SignalRankingData, error) {
