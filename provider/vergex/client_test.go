@@ -118,6 +118,43 @@ func TestMarketSymbolPreservesHIP3XYZPrefix(t *testing.T) {
 	}
 }
 
+func TestFilterSignalRankingItems_MarketFamilyIsolation(t *testing.T) {
+	// The free vergex.trade leaderboard mixes crypto (core_perp) and stock
+	// (hip3_perp) rows. Filtering for a crypto (core_perp) pool must NOT leak
+	// stocks in, and a stock (hip3_perp) pool must NOT leak crypto in — across
+	// all bias/direction variants.
+	board := []SignalRankItem{
+		{Rank: 1, Symbol: "PUMP", MarketType: "core_perp", Bias: "bullish"},
+		{Rank: 2, Symbol: "BTC", MarketType: "core_perp", Bias: "bearish"},
+		{Rank: 3, Symbol: "SP500", MarketType: "hip3_perp", Bias: "bullish"},
+		{Rank: 4, Symbol: "GOLD", MarketType: "hip3_perp", Bias: "bearish"},
+	}
+	cases := []struct {
+		name       string
+		req        string
+		wantSymbol string
+	}{
+		{"crypto_bias_bullish", "core_perp", "BTC"},  // contains crypto, no stock
+		{"crypto_bias_bearish", "core_perp", "BTC"},  // contains crypto, no stock
+		{"stock_bias_bullish", "hip3_perp", "SP500"}, // contains stock, no crypto
+		{"stock_bias_bearish", "hip3_perp", "SP500"}, // contains stock, no crypto
+	}
+	for _, c := range cases {
+		got := FilterSignalRankingItems(board, c.req, 10)
+		if len(got) != 2 {
+			t.Fatalf("%s: len = %d, want 2 (market family isolation)", c.name, len(got))
+		}
+		for _, it := range got {
+			if c.wantSymbol == "BTC" && it.MarketType == "hip3_perp" {
+				t.Fatalf("%s: crypto pool leaked stock %s", c.name, it.Symbol)
+			}
+			if c.wantSymbol == "SP500" && it.MarketType == "core_perp" {
+				t.Fatalf("%s: stock pool leaked crypto %s", c.name, it.Symbol)
+			}
+		}
+	}
+}
+
 func TestAddQueryDefaultsUsesClaw402GatewayParams(t *testing.T) {
 	params := url.Values{}
 	addQueryDefaults(params, Query{

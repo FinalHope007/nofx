@@ -571,10 +571,98 @@ This is a **scope decision**: changing NoFXOS claw402 routing could affect other
 
 ---
 
+### Task 7: Market-family isolation in `filterSignalRankingItems` (crypto vs stock pools)
+
+**Files:**
+- Modify: `provider/vergex/client.go`
+- Test: `provider/vergex/client_test.go`
+
+**Interfaces:**
+- Consumes: `filterSignalRankingItems` (in `provider/vergex/client.go`), `isCoreMarketType`, `isTradeFiMarketType`, `isXYZ`, `normalizeMarketType`.
+- Produces: the free leaderboard filter keeps crypto and stock pools isolated; a `core_perp` (crypto) request excludes `hip3_perp`/stock rows, and a `hip3_perp` (stock) request excludes `core_perp`/crypto rows — across all bias/direction variants.
+
+Context: the free `vergex.trade` leaderboard mixes `core_perp` (crypto) and `hip3_perp` (stock) rows. A crypto-bias strategy (`getVergexSignalCoins` with `marketType="core_perp"`) was returning stocks too, because `filterSignalRankingItems`'s TradeFi exemption let `hip3_perp` rows pass when the requested market was crypto. The leftover stocks then hit `FetchVergexDataBatch`, which tried `core_perp:<stock>` and got 404 → no per-coin detail. Isolating the pool fixes both symptoms.
+
+- [ ] **Step 1: Add the regression test**
+
+Append to `provider/vergex/client_test.go`:
+
+```go
+func TestFilterSignalRankingItems_MarketFamilyIsolation(t *testing.T) {
+	board := []SignalRankItem{
+		{Rank: 1, Symbol: "PUMP", MarketType: "core_perp", Bias: "bullish"},
+		{Rank: 2, Symbol: "BTC", MarketType: "core_perp", Bias: "bearish"},
+		{Rank: 3, Symbol: "SP500", MarketType: "hip3_perp", Bias: "bullish"},
+		{Rank: 4, Symbol: "GOLD", MarketType: "hip3_perp", Bias: "bearish"},
+	}
+	cases := []struct{ name, req, wantSymbol string }{
+		{"crypto_bias_bullish", "core_perp", "BTC"},
+		{"crypto_bias_bearish", "core_perp", "BTC"},
+		{"stock_bias_bullish", "hip3_perp", "SP500"},
+		{"stock_bias_bearish", "hip3_perp", "SP500"},
+	}
+	for _, c := range cases {
+		got := FilterSignalRankingItems(board, c.req, 10)
+		if len(got) != 2 {
+			t.Fatalf("%s: len = %d, want 2 (market family isolation)", c.name, len(got))
+		}
+		for _, it := range got {
+			if c.wantSymbol == "BTC" && it.MarketType == "hip3_perp" {
+				t.Fatalf("%s: crypto pool leaked stock %s", c.name, it.Symbol)
+			}
+			if c.wantSymbol == "SP500" && it.MarketType == "core_perp" {
+				t.Fatalf("%s: stock pool leaked crypto %s", c.name, it.Symbol)
+			}
+		}
+	}
+}
+```
+
+- [ ] **Step 2: Run to confirm fail**
+
+Run: `go test ./provider/vergex/ -run TestFilterSignalRankingItems_MarketFamilyIsolation -v`
+Expected: FAIL — the crypto cases return 4 items (stocks leak in).
+
+- [ ] **Step 3: Add the crypto-family skip to `filterSignalRankingItems`**
+
+In `provider/vergex/client.go`, in the `if !includeAll { ... }` block, add before the existing `itemMarket != ...` check:
+
+```go
+		if !includeAll {
+			// A crypto-only pool (requested core/crypto) must drop TradeFi/stock
+			// items. Without this, the free leaderboard's mixed board leaks
+			// stocks into a crypto-bias strategy.
+			if isCoreMarketType(normalizedMarketType) && (isTradeFiMarketType(itemMarket) || isXYZ) {
+				continue
+			}
+			if itemMarket != "" && normalizedMarketType != "" && itemMarket != normalizedMarketType && !isTradeFiMarketType(itemMarket) && !isXYZ {
+				continue
+			}
+			if itemMarket == "" && !isXYZ {
+				continue
+			}
+		}
+```
+
+- [ ] **Step 4: Run tests to confirm pass**
+
+Run: `go test ./provider/vergex/ -run TestFilterSignalRankingItems_MarketFamilyIsolation -v` → PASS.
+Then: `go test ./provider/vergex/` → all existing tests (paid + free) PASS.
+Then: `go build ./... && go vet ./...` → PASS. `gofmt -l provider/vergex/client.go provider/vergex/client_test.go` → clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add provider/vergex/client.go provider/vergex/client_test.go
+git commit -m "fix(vergex): isolate crypto/stock market families in free leaderboard filter"
+```
+
+---
+
 ## Self-Review Notes
 
-- **Spec coverage:** Fix A → Task 1; Fix B → Task 3; Fix C → Task 2; Fix D → Task 5; Fix E → Task 4; Fix F → Task 6. Every spec section maps to a task. Non-goals documented in Global Constraints.
+- **Spec coverage:** Fix A → Task 1; Fix B → Task 3; Fix C → Task 2; Fix D → Task 5; Fix E → Task 4; Fix F → Task 6; market-family isolation (crypto/stock pools) → Task 7. Every spec section maps to a task. Non-goals documented in Global Constraints.
 - **Type consistency:** `FreeDetailSymbol(marketType, symbol)` (Task 1) consumed by `GetSignalLab`/`GetCostLiquidationHeatmap`. `formatVergexData(data, omitUnavailable bool)` (Task 2) consumed by two `engine_prompt.go` callers. `GetWithTimeframesWithExchange(...)` + `StrategyEngine.exchange` + `SetExchange` (Task 4) consumed by `fetchMarketDataWithStrategy` and `auto_trader.go`. `resolveKlineExchange` (Task 4) unit-tested.
-- **Placeholder check:** all implementation steps carry literal Go/TS. Task 3 is a verification task (no code). Task 6 is intentionally an investigation + scope-decision task (no code) — flagged explicitly.
+- **Placeholder check:** all implementation steps carry literal Go/TS. Task 3 is a verification task (no code). Task 6 is intentionally an investigation + scope-decision task (no code) — flagged explicitly. Task 7's Step 2 expects the crypto cases to fail (4 items leak) before the fix — matches the verified bug.
 - **URL-encoding note:** Task 1 encodes `:`→`%3A` in the detail path. If the live server accepts literal `:` too, the encoding is still harmless and matches the verified curl; the Task 3 live check is the authority.
 - **Fix D nuance:** the funnel `flow`/`signal` layers were sourced from GLOBAL vergex endpoints (not per-strategy). The task makes them empty when the active strategy has no per-coin detail, which matches the user's requirement ("fine that flow/signal does not have output as long as decision/execute/hold still works").

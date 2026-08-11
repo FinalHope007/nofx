@@ -408,6 +408,12 @@ func filterSignalRankingItems(items []SignalRankItem, marketType string, limit i
 		itemMarket := normalizeMarketType(item.MarketType)
 		isXYZ := hyperliquid.IsXYZAsset(item.Symbol) || hyperliquid.IsXYZAsset(base)
 		if !includeAll {
+			// A crypto-only pool (requested core/crypto) must drop TradeFi/stock
+			// items. Without this, the free leaderboard's mixed board leaks
+			// stocks into a crypto-bias strategy.
+			if isCoreMarketType(normalizedMarketType) && (isTradeFiMarketType(itemMarket) || isXYZ) {
+				continue
+			}
 			if itemMarket != "" && normalizedMarketType != "" && itemMarket != normalizedMarketType && !isTradeFiMarketType(itemMarket) && !isXYZ {
 				continue
 			}
