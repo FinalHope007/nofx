@@ -57,9 +57,11 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 		return err
 	}
 
+	exchangeSymbol := ExchangeSymbol(decision.Symbol, at.exchange)
+
 	// Check if there's already a position in the same symbol and direction
 	for _, pos := range positions {
-		if pos["symbol"] == decision.Symbol && pos["side"] == "long" {
+		if pos["symbol"] == exchangeSymbol && pos["side"] == "long" {
 			return fmt.Errorf("❌ %s already has long position, close it first", decision.Symbol)
 		}
 	}
@@ -122,13 +124,13 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 	actionRecord.Price = marketData.CurrentPrice
 
 	// Set margin mode
-	if err := at.trader.SetMarginMode(decision.Symbol, at.config.IsCrossMargin); err != nil {
+	if err := at.trader.SetMarginMode(exchangeSymbol, at.config.IsCrossMargin); err != nil {
 		logger.Infof("  ⚠️ Failed to set margin mode: %v", err)
 		// Continue execution, doesn't affect trading
 	}
 
 	// Open position
-	order, err := at.trader.OpenLong(decision.Symbol, quantity, decision.Leverage)
+	order, err := at.trader.OpenLong(exchangeSymbol, quantity, decision.Leverage)
 	if err != nil {
 		return fmt.Errorf("failed to open long position for %s: %w", decision.Symbol, err)
 	}
@@ -148,10 +150,10 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
 
 	// Set stop loss and take profit
-	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
+	if err := at.trader.SetStopLoss(exchangeSymbol, "LONG", quantity, decision.StopLoss); err != nil {
 		logger.Infof("  ⚠ Failed to set stop loss: %v", err)
 	}
-	if err := at.trader.SetTakeProfit(decision.Symbol, "LONG", quantity, decision.TakeProfit); err != nil {
+	if err := at.trader.SetTakeProfit(exchangeSymbol, "LONG", quantity, decision.TakeProfit); err != nil {
 		logger.Infof("  ⚠ Failed to set take profit: %v", err)
 	}
 
@@ -173,9 +175,11 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 		return err
 	}
 
+	exchangeSymbol := ExchangeSymbol(decision.Symbol, at.exchange)
+
 	// Check if there's already a position in the same symbol and direction
 	for _, pos := range positions {
-		if pos["symbol"] == decision.Symbol && pos["side"] == "short" {
+		if pos["symbol"] == exchangeSymbol && pos["side"] == "short" {
 			return fmt.Errorf("❌ %s already has short position, close it first", decision.Symbol)
 		}
 	}
@@ -238,13 +242,13 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 	actionRecord.Price = marketData.CurrentPrice
 
 	// Set margin mode
-	if err := at.trader.SetMarginMode(decision.Symbol, at.config.IsCrossMargin); err != nil {
+	if err := at.trader.SetMarginMode(exchangeSymbol, at.config.IsCrossMargin); err != nil {
 		logger.Infof("  ⚠️ Failed to set margin mode: %v", err)
 		// Continue execution, doesn't affect trading
 	}
 
 	// Open position
-	order, err := at.trader.OpenShort(decision.Symbol, quantity, decision.Leverage)
+	order, err := at.trader.OpenShort(exchangeSymbol, quantity, decision.Leverage)
 	if err != nil {
 		return fmt.Errorf("failed to open short position for %s: %w", decision.Symbol, err)
 	}
@@ -264,10 +268,10 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
 
 	// Set stop loss and take profit
-	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
+	if err := at.trader.SetStopLoss(exchangeSymbol, "SHORT", quantity, decision.StopLoss); err != nil {
 		logger.Infof("  ⚠ Failed to set stop loss: %v", err)
 	}
-	if err := at.trader.SetTakeProfit(decision.Symbol, "SHORT", quantity, decision.TakeProfit); err != nil {
+	if err := at.trader.SetTakeProfit(exchangeSymbol, "SHORT", quantity, decision.TakeProfit); err != nil {
 		logger.Infof("  ⚠ Failed to set take profit: %v", err)
 	}
 
@@ -285,8 +289,10 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 	}
 	actionRecord.Price = marketData.CurrentPrice
 
+	exchangeSymbol := ExchangeSymbol(decision.Symbol, at.exchange)
+
 	// Normalize symbol for database lookup
-	normalizedSymbol := market.Normalize(decision.Symbol)
+	normalizedSymbol := market.Normalize(exchangeSymbol)
 
 	// Get entry price and quantity - prioritize local database for accurate quantity
 	var entryPrice float64
@@ -306,7 +312,7 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 		positions, err := at.trader.GetPositions()
 		if err == nil {
 			for _, pos := range positions {
-				if pos["symbol"] == decision.Symbol && pos["side"] == "long" {
+				if pos["symbol"] == exchangeSymbol && pos["side"] == "long" {
 					if ep, ok := pos["entryPrice"].(float64); ok {
 						entryPrice = ep
 					}
@@ -321,7 +327,7 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 	}
 
 	// Close position
-	order, err := at.trader.CloseLong(decision.Symbol, 0) // 0 = close all
+	order, err := at.trader.CloseLong(exchangeSymbol, 0) // 0 = close all
 	if err != nil {
 		return fmt.Errorf("failed to close long position for %s: %w", decision.Symbol, err)
 	}
@@ -349,8 +355,10 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 	}
 	actionRecord.Price = marketData.CurrentPrice
 
+	exchangeSymbol := ExchangeSymbol(decision.Symbol, at.exchange)
+
 	// Normalize symbol for database lookup
-	normalizedSymbol := market.Normalize(decision.Symbol)
+	normalizedSymbol := market.Normalize(exchangeSymbol)
 
 	// Get entry price and quantity - prioritize local database for accurate quantity
 	var entryPrice float64
@@ -370,7 +378,7 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 		positions, err := at.trader.GetPositions()
 		if err == nil {
 			for _, pos := range positions {
-				if pos["symbol"] == decision.Symbol && pos["side"] == "short" {
+				if pos["symbol"] == exchangeSymbol && pos["side"] == "short" {
 					if ep, ok := pos["entryPrice"].(float64); ok {
 						entryPrice = ep
 					}
@@ -385,7 +393,7 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 	}
 
 	// Close position
-	order, err := at.trader.CloseShort(decision.Symbol, 0) // 0 = close all
+	order, err := at.trader.CloseShort(exchangeSymbol, 0) // 0 = close all
 	if err != nil {
 		return fmt.Errorf("failed to close short position for %s: %w", decision.Symbol, err)
 	}
