@@ -4,7 +4,7 @@
 
 **Goal:** Remove the runtime dependency on the paywalled `claw402.ai`/`CLAW402_WALLET_KEY` data path by routing every data source (candidate pool, per-coin detail, prompt context, and the four frontend vergex handlers) to free, publicly accessible `vergex.trade` endpoints, and fix the scope-card lossy-collapse so every card resolves to the correct free endpoint.
 
-**Architecture:** A new `provider/vergex/free.go` `FreeClient` fetches `vergex.trade` api/v1 endpoints (signal leaderboard, stock hot/movers, per-coin signals/riskbins/summary/direction-change/flow-markets), reusing the existing `ParseSignalRanking` + `SignalRankItem` types. A new `provider/nofxos/free.go` `FreeTrendingClient` fetches the `vergex.trade/trending-crypto` endpoints (OI/netflow/price) and reuses the existing strict structs. The engine getters and vergex handlers route through these free clients; a configurable Bearer token (optional) is sent on authed detail calls. A unified `variant` field is added to the frontend `ScopeUnit` so each scope card carries its rank-direction qualifier, and `buildCoinSource` emits the correct backend `source_type` (`oi_top`/`oi_low`/`netflow_top`/`netflow_low`/`price_top`/`price_low`/`vergex_signal`+`vergex_direction`). The paid-only vergex client stays untouched; it is simply no longer required for these sources.
+**Architecture:** The existing `provider/vergex.Client` gains a free/x402 mode switch: in free mode it does plain HTTP GETs on `vergex.trade` (optional Bearer token) while reusing the same methods and `ParseSignalRanking` parsing, so the paid endpoint pipeline is reused end-to-end. A new `provider/nofxos/free.go` `FreeTrendingClient` fetches the `vergex.trade/trending-crypto` endpoints (OI/netflow/price; different host + envelope) and reuses the existing strict structs. The engine getters and vergex handlers route through the free-mode vergex client and the trending client; a configurable Bearer token (optional) is sent on authed detail calls. A unified `variant` field is added to the frontend `ScopeUnit` so each scope card carries its rank-direction qualifier, and `buildCoinSource` emits the correct backend `source_type` (`oi_top`/`oi_low`/`netflow_top`/`netflow_low`/`price_top`/`price_low`/`vergex_signal`+`vergex_direction`).
 
 **Tech Stack:** Go 1.25 (Gin, GORM), React 18 + TS + Vite frontend. Verified live endpoints documented in `data-alt-endpoints.md`.
 
@@ -26,11 +26,10 @@
 - `web/src/features/strategies/scopeCatalog.ts` — add `variant` to `ScopeCardDef` + every card; `toScopeUnit`.
 - `web/src/features/strategies/strategyFactory.ts` — `buildCoinSource` maps `variant` → correct `source_type`+qualifier.
 
-**Backend — new free clients:**
-- `provider/vergex/free.go` — `FreeClient` (vergex.trade api/v1; optional bearer token).
-- `provider/nofxos/free.go` — `FreeTrendingClient` (vergex.trade/trending-crypto).
-- `provider/vergex/free.go` reuses `ParseSignalRanking`/`SignalRankItem` from `client.go`.
-- Tests: `provider/vergex/free_test.go`, `provider/nofxos/free_test.go`.
+**Backend — free data clients:**
+- `provider/vergex/client.go` — add free/x402 mode switch to the existing `vergex.Client`: free-mode constructor `NewFreeClient`, `doFreeGET`, free path consts, `GetStockTrending`/`GetStockMovers`, and make the four paid methods mode-aware (reusing the same parsing).
+- `provider/nofxos/free.go` — `FreeTrendingClient` (vergex.trade/trending-crypto OI/netflow/price + ai500; different host+envelope, thin adapter).
+- Tests: `provider/vergex/free_mode_test.go`, `provider/nofxos/free_test.go`.
 
 **Backend — schema (modified):**
 - `store/strategy.go` — `CoinSourceConfig.VergexDirection` field; extend `normalizeCoinSourceType`, `NormalizeProductSchema`, `inferCoinSourceType` for netflow/price source types.
@@ -38,7 +37,7 @@
 - Tests: `store/strategy_schema_test.go`.
 
 **Backend — engine (modified):**
-- `kernel/engine.go` — hold a `*vergex.FreeClient` and `*nofxos.FreeTrendingClient`; add `GetCandidateCoins` cases for `netflow_top`/`netflow_low`/`price_top`/`price_low`; add `vergex_direction` routing in `getVergexSignalCoins`; change `getOITopCoins`/`getOILowCoins`/`getAI500Coins`/netflow/price to use free clients; add free fetchers for per-coin detail.
+- `kernel/engine.go` — hold a `*vergex.Client` (free-mode) and `*nofxos.FreeTrendingClient`; add `GetCandidateCoins` cases for `netflow_top`/`netflow_low`/`price_top`/`price_low`; add `vergex_direction` routing in `getVergexSignalCoins`; change `getOITopCoins`/`getOILowCoins`/`getAI500Coins`/netflow/price to use free data; add free fetchers for per-coin detail.
 - Tests: `kernel/engine_*_test.go`.
 
 **Backend — handlers (modified):**
@@ -510,227 +509,211 @@ git commit -m "feat(strategy): schema support for netflow/price source types + v
 
 ---
 
-### Task 4: `provider/vergex/free.go` — FreeClient (signal leaderboard, stock hot/movers, detail)
+### Task 4: Reuse `vergex.Client` — free/x402 mode switch + free path consts
 
 **Files:**
-- Create: `provider/vergex/free.go`
-- Test: `provider/vergex/free_test.go`
+- Modify: `provider/vergex/client.go`
+- Modify: `provider/vergex/client_test.go`
 
 **Interfaces:**
-- Consumes: `parseRankItem`/`ParseSignalRanking`/`SignalRankItem`/`Query`/`MarketSymbol`/`TradableSymbolForMarket` from `provider/vergex/client.go`; `security.SafeHTTPClient`.
-- Produces:
-  - `func NewFreeClient(authToken string) *FreeClient`
-  - `func (c *FreeClient) GetLeaderboard() (*SignalRankingData, error)` — GET `/api/v1/direction-change/leaderboard`
-  - `func (c *FreeClient) GetStockTrending(limit int) (*SignalRankingData, error)` — GET `/api/v1/market-data/hl-stocks-hot?limit=`
-  - `func (c *FreeClient) GetStockMovers(direction string, limit int) (*SignalRankingData, error)` — GET `/api/v1/market-data/hl-stocks-movers?direction=&limit=`
-  - `func (c *FreeClient) GetRaw(path string, params url.Values) (json.RawMessage, error)` — generic authed GET returning raw bytes
-  - Helper free-endpoint path constants: `LeaderboardPath`, `StocksHotPath`, `StocksMoversPath`, and detail paths `SignalSignalsPath`, `SignalRiskbinsPath`, `SignalSummaryPath`, `DirectionCurrentPath`, `DirectionHistoryPath`, `StructOverviewPath`, `CoveragePath`, `HoldersPath`, `MarketsPath`, `FlowMarketsPath`.
+- Consumes: existing `Client` struct + `doGET`, `ParseSignalRanking`, `MarketSymbol`, `addQueryDefaults`; `security.SafeHTTPClient`.
+- Produces (reused by Tasks 6/8):
+  - `func NewFreeClient(baseURL, authToken string, logger mcp.Logger) (*Client, error)` — free-mode client (no private key required; plain HTTP GET; optional Bearer token). Sets `freeMode: true` and `authToken` on the returned client.
+  - Existing methods (`GetSignalRanking`, `GetSignalLab`, `GetCostLiquidationHeatmap`, `GetFlowMarkets`) become mode-aware: in free mode they hit the free `vergex.trade` paths and do plain HTTP; in paid mode they keep the x402 path unchanged.
+  - New free-only methods: `GetStockTrending(limit int)`, `GetStockMovers(direction string, limit int) (*SignalRankingData, error)`.
+  - Free path constants (non-colliding with existing paid consts): `FreeLeaderboardPath`, `FreeStocksHotPath`, `FreeStocksMoversPath`, `FreeSignalsPath`, `FreeRiskbinsPath`, `FreeFlowMarketsPath`.
+
+**Design note (replaces the old "parallel FreeClient" approach):** The paid methods are thin wrappers over `doGET`; only the transport (`payment.DoX402Request`) and the path constants make them "paid". We reuse the same `Client`, methods, and `ParseSignalRanking` and add a free transport path inside `doGET`. This avoids a duplicate client and the `FlowMarketsPath` const collision.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `provider/vergex/free_test.go`:
+Append to `provider/vergex/client_test.go` (or a new `provider/vergex/free_mode_test.go`):
 
 ```go
 package vergex
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-func TestFreeClient_GetLeaderboard(t *testing.T) {
-	body := `{"band":15,"items":[
-	  {"symbol":"PUMP","bias":"bullish","directionScore":4,"rank":1,"market":{"marketType":"core_perp"}},
-	  {"symbol":"xyz:MSFT","bias":"bullish","directionScore":3,"rank":2,"market":{"marketType":"hip3_perp"}}
-	]}`
+func TestNewFreeClient_NoKey_PlainGET(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/direction-change/leaderboard" {
-			t.Fatalf("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
 		}
 		if r.Header.Get("Authorization") != "Bearer tok" {
-			t.Fatalf("missing auth header")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(body))
+		w.Write([]byte(`{"items":[{"symbol":"PUMP","bias":"bullish","rank":1,"market":{"marketType":"core_perp"}}]}`))
 	}))
 	defer srv.Close()
 
-	c := NewFreeClient("tok")
-	c.baseURL = srv.URL + "/api/v1"
-	data, err := c.GetLeaderboard()
+	c, err := NewFreeClient(srv.URL, "tok", nil)
 	if err != nil {
-		t.Fatalf("GetLeaderboard: %v", err)
+		t.Fatalf("NewFreeClient: %v", err)
 	}
-	if len(data.Items) != 2 {
-		t.Fatalf("items = %d, want 2", len(data.Items))
+	if c.freeMode != true {
+		t.Fatalf("freeMode = false, want true")
 	}
-	if data.Items[0].Symbol != "PUMP" || data.Items[0].Bias != "bullish" || data.Items[0].MarketType != "core_perp" {
-		t.Fatalf("item[0] = %+v", data.Items[0])
+	data, err := c.GetSignalRanking(t.Context(), Query{})
+	if err != nil {
+		t.Fatalf("GetSignalRanking free: %v", err)
+	}
+	if len(data.Items) != 1 || data.Items[0].Symbol != "PUMP" {
+		t.Fatalf("items = %+v", data.Items)
 	}
 }
 
-func TestFreeClient_GetStockMovers(t *testing.T) {
-	body := `{"requestId":"","direction":"gainers","entries":[
-	  {"symbol":"SMSNUSDC","rank":1,"change24hPct":5.2}
-	]}`
+func TestClient_GetStockMovers_freePath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/market-data/hl-stocks-movers" {
-			t.Fatalf("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
 		}
 		if r.URL.Query().Get("direction") != "gainers" {
-			t.Fatalf("direction = %q, want gainers", r.URL.Query().Get("direction"))
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(body))
+		w.Write([]byte(`{"direction":"gainers","entries":[{"symbol":"SMSNUSDC","rank":1,"change24hPct":5.2}]}`))
 	}))
 	defer srv.Close()
 
-	c := NewFreeClient("")
-	c.baseURL = srv.URL + "/api/v1"
+	c, err := NewFreeClient(srv.URL, "", nil)
+	if err != nil {
+		t.Fatalf("NewFreeClient: %v", err)
+	}
 	data, err := c.GetStockMovers("gainers", 10)
 	if err != nil {
 		t.Fatalf("GetStockMovers: %v", err)
 	}
 	if len(data.Items) != 1 || data.Items[0].Symbol != "SMSN" {
-		t.Fatalf("unexpected players %+v", data.Items)
-	}
-}
-
-func TestFreeClient_GetRaw_AddsToken(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer tok" {
-			t.Fatalf("missing token header")
-		}
-		w.Write([]byte(`{"data":{"bins":[{"px":1}]}}`))
-	}))
-	defer srv.Close()
-	c := NewFreeClient("tok")
-	c.baseURL = srv.URL
-	raw, err := c.GetRaw("/api/v1/data-intelligence/markets/core_perp/core_perp%3ABTC/riskbins", nil)
-	if err != nil {
-		t.Fatalf("GetRaw: %v", err)
-	}
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if _, ok := m["data"]; !ok {
-		t.Fatalf("missing data key")
+		t.Fatalf("items = %+v", data.Items)
 	}
 }
 ```
 
+Note: `t.Context()` requires Go 1.24+; this repo is Go 1.25 so it is available. If `t.Context()` is unavailable, use `context.Background()` and add `"context"` to imports.
+
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `go test ./provider/vergex/ -run TestFreeClient -v`
-Expected: FAIL — `undefined: NewFreeClient`.
+Run: `go test ./provider/vergex/ -run 'TestNewFreeClient|TestClient_GetStockMovers' -v`
+Expected: FAIL — `undefined: NewFreeClient` (and `freeMode` field absent).
 
-- [ ] **Step 3: Write `free.go`**
+- [ ] **Step 3: Modify `client.go` — struct + free consts + free-mode setter + `NewFreeClient`**
 
-Create `provider/vergex/free.go`:
+Add free path constants. Keep them distinct from the existing paid consts (no `FlowMarketsPath` collision):
 
 ```go
-package vergex
-
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"net/url"
-	"nofx/security"
-	"strings"
-	"time"
-)
-
 const (
-	DefaultFreeBaseURL  = "https://vergex.trade"
-	DefaultFreeTimeout  = 30 * time.Second
-	LeaderboardPath     = "/api/v1/direction-change/leaderboard"
-	StocksHotPath       = "/api/v1/market-data/hl-stocks-hot"
-	StocksMoversPath    = "/api/v1/market-data/hl-stocks-movers"
-	SignalSignalsPath   = "/api/v1/data-intelligence/markets"
-	SignalRiskbinsPath  = "/api/v1/data-intelligence/markets"
-	SignalSummaryPath   = "/api/v1/data-intelligence/markets"
-	DirectionCurrentPath = "/api/v1/direction-change"
-	DirectionHistoryPath = "/api/v1/direction-change"
-	StructOverviewPath   = "/api/v1/data-intelligence/markets/structure-overview"
-	MarketsPath          = "/api/v1/data-intelligence/markets"
-	FlowMarketsPath      = "/api/v1/data-intelligence/flow/markets"
+	// Free vergex.trade endpoints (no x402). Used when the client is in free mode.
+	FreeLeaderboardPath  = "/api/v1/direction-change/leaderboard"
+	FreeStocksHotPath    = "/api/v1/market-data/hl-stocks-hot"
+	FreeStocksMoversPath = "/api/v1/market-data/hl-stocks-movers"
+	FreeSignalsPath      = "/api/v1/data-intelligence/markets/%s/%s/signals"
+	FreeRiskbinsPath     = "/api/v1/data-intelligence/markets/%s/%s/riskbins"
+	FreeFlowMarketsPath  = "/api/v1/data-intelligence/flow/markets"
 )
+```
 
-// FreeClient fetches the free vergex.trade endpoints (no x402/Claw402
-// payment). An optional Bearer token is attached for endpoints that require
-// it (per-coin detail). It reuses the lenient SignalRankItem parser.
-type FreeClient struct {
-	baseURL string
-	token   string
-	http    *http.Client
+Add fields to the `Client` struct:
+
+```go
+type Client struct {
+	baseURL    string
+	privateKey *ecdsa.PrivateKey
+	httpClient *http.Client
+	logger     mcp.Logger
+	freeMode   bool   // true: plain HTTP GET on vergex.trade; false: x402 paid
+	authToken  string // optional Bearer token for free-mode authed endpoints
 }
+```
 
-func NewFreeClient(authToken string) *FreeClient {
-	base := strings.TrimRight(DefaultFreeBaseURL, "/")
-	return &FreeClient{
-		baseURL: base,
-		token:   strings.TrimSpace(authToken),
-		http:    security.SafeHTTPClient(DefaultFreeTimeout),
+Add the free-mode constructor:
+
+```go
+// NewFreeClient builds a vergex client for the free vergex.trade endpoints.
+// No Claw402 wallet is required; requests are plain HTTP GETs (optionally
+// carrying a Bearer token for authed per-coin detail endpoints).
+func NewFreeClient(baseURL, authToken string, logger mcp.Logger) (*Client, error) {
+	if baseURL == "" {
+		baseURL = strings.TrimRight(DefaultFreeBaseURL, "/")
 	}
-}
-
-// GetLeaderboard returns the direction-change (bias radar) leaderboard.
-func (c *FreeClient) GetLeaderboard() (*SignalRankingData, error) {
-	return c.getSignalRanking(LeaderboardPath, nil)
-}
-
-// GetStockTrending returns the hot/trending US stocks list.
-func (c *FreeClient) GetStockTrending(limit int) (*SignalRankingData, error) {
-	params := url.Values{}
-	if limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", limit))
+	if logger == nil {
+		logger = mcp.NewNoopLogger()
 	}
-	return c.getSignalRanking(StocksHotPath, params)
+	return &Client{
+		baseURL:    baseURL,
+		httpClient: security.SafeHTTPClient(30 * time.Second),
+		logger:     logger,
+		freeMode:   true,
+		authToken:  strings.TrimSpace(authToken),
+	}, nil
 }
+```
 
-// GetStockMovers returns stock gainers (direction= gainers) or losers.
-func (c *FreeClient) GetStockMovers(direction string, limit int) (*SignalRankingData, error) {
-	params := url.Values{}
-	params.Set("direction", direction)
-	if limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", limit))
+Add `DefaultFreeBaseURL` to the existing `const` block (client.go:22-31), NOT a duplicate block:
+
+```go
+	DefaultFreeBaseURL = "https://vergex.trade"
+```
+
+- [ ] **Step 4: Modify `doGET` to branch on free mode**
+
+Change `doGET` (client.go:167) so that in free mode it does a plain GET:
+
+```go
+func (c *Client) doGET(ctx context.Context, path string, params url.Values) ([]byte, error) {
+	if c == nil {
+		return nil, fmt.Errorf("vergex client is nil")
 	}
-	return c.getSignalRanking(StocksMoversPath, params)
-}
-
-func (c *FreeClient) getSignalRanking(path string, params url.Values) (*SignalRankingData, error) {
-	body, err := c.GetRaw(path, params)
-	if err != nil {
-		return nil, err
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return ParseSignalRanking(body)
-}
-
-// GetRaw performs an authenticated GET to a vergex.trade api/v1 path and
-// returns the raw response bytes. If c.token is set it is sent as
-// Authorization: Bearer <token>.
-func (c *FreeClient) GetRaw(path string, params url.Values) (json.RawMessage, error) {
 	fullURL := c.baseURL + path
 	if encoded := params.Encode(); encoded != "" {
 		fullURL += "?" + encoded
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, fullURL, nil)
+	if c.freeMode {
+		return c.doFreeGET(ctx, fullURL)
+	}
+	buildReq := func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("X-Client-ID", "nofx")
+		return req, nil
+	}
+	body, err := payment.DoX402Request(
+		ctx, c.httpClient, buildReq,
+		payment.MakeClaw402SignFunc(c.privateKey), "claw402-vergex", c.logger,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("vergex request failed (%s): %w", path, err)
+	}
+	return body, nil
+}
+
+// doFreeGET performs a plain HTTPS GET to a vergex.trade endpoint, attaching
+// the optional Bearer token. Returns raw body bytes or an error.
+func (c *Client) doFreeGET(ctx context.Context, fullURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("vergex free request: %w", err)
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; nofx)")
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("vergex free GET %s: %w", path, err)
+		return nil, fmt.Errorf("vergex free GET %s: %w", fullURL, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
@@ -738,22 +721,154 @@ func (c *FreeClient) GetRaw(path string, params url.Values) (json.RawMessage, er
 	}
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("vergex token rejected (401) for %s", path)
+		return nil, fmt.Errorf("vergex token rejected (401) for %s", fullURL)
 	}
-	return nil, fmt.Errorf("vergex free GET %s: HTTP %d: %s", path, resp.StatusCode, strings.TrimSpace(string(b)))
+	return nil, fmt.Errorf("vergex free GET %s: HTTP %d: %s", fullURL, resp.StatusCode, strings.TrimSpace(string(b)))
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+Add `"io"` to client.go imports if not present.
 
-Run: `go test ./provider/vergex/ -run TestFreeClient -v`
+- [ ] **Step 5: Make the four paid methods mode-aware + add stock methods**
+
+`GetSignalRanking` — in free mode use the leaderboard path:
+
+```go
+func (c *Client) GetSignalRanking(ctx context.Context, q Query) (*SignalRankingData, error) {
+	params := url.Values{}
+	if c.freeMode {
+		body, err := c.doGET(ctx, FreeLeaderboardPath, params)
+		if err != nil {
+			return nil, err
+		}
+		return ParseSignalRanking(body)
+	}
+	addQueryDefaults(params, q, false)
+	body, err := c.doGET(ctx, SignalRankingPath, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSignalRanking(body)
+}
+```
+
+`GetSignalLab` — free path is `FreeSignalsPath` formatted with marketType+symbol; params carry chain/liqBand:
+
+```go
+func (c *Client) GetSignalLab(ctx context.Context, q Query) (json.RawMessage, error) {
+	if strings.TrimSpace(q.MarketType) == "" || strings.TrimSpace(q.Symbol) == "" {
+		return nil, fmt.Errorf("marketType and symbol are required")
+	}
+	if c.freeMode {
+		params := url.Values{}
+		if q.Chain != "" {
+			params.Set("chain", QueryChain(q.Chain))
+		}
+		if q.LiqBand != "" {
+			params.Set("liqBand", q.LiqBand)
+		}
+		path := fmt.Sprintf(FreeSignalsPath, q.MarketType, MarketSymbol(q.MarketType, q.Symbol))
+		return c.doGET(ctx, path, params)
+	}
+	params := url.Values{}
+	addQueryDefaults(params, q, true)
+	return c.doGET(ctx, SignalLabPath, params)
+}
+```
+
+`GetCostLiquidationHeatmap` mirrors it with `FreeRiskbinsPath`:
+
+```go
+func (c *Client) GetCostLiquidationHeatmap(ctx context.Context, q Query) (json.RawMessage, error) {
+	if strings.TrimSpace(q.MarketType) == "" || strings.TrimSpace(q.Symbol) == "" {
+		return nil, fmt.Errorf("marketType and symbol are required")
+	}
+	if c.freeMode {
+		params := url.Values{}
+		if q.Chain != "" {
+			params.Set("chain", QueryChain(q.Chain))
+		}
+		if q.LiqBand != "" {
+			params.Set("liqBand", q.LiqBand)
+		}
+		path := fmt.Sprintf(FreeRiskbinsPath, q.MarketType, MarketSymbol(q.MarketType, q.Symbol))
+		return c.doGET(ctx, path, params)
+	}
+	params := url.Values{}
+	addQueryDefaults(params, q, true)
+	return c.doGET(ctx, CostLiquidationHeatmapPath, params)
+}
+```
+
+`GetFlowMarkets` — free path is `FreeFlowMarketsPath`:
+
+```go
+func (c *Client) GetFlowMarkets(ctx context.Context, chain, window string, limit int) (json.RawMessage, error) {
+	params := url.Values{}
+	if v := strings.TrimSpace(chain); v != "" {
+		params.Set("chain", v)
+	}
+	if v := strings.TrimSpace(window); v != "" {
+		params.Set("window", v)
+	}
+	if limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	path := FlowMarketsPath
+	if c.freeMode {
+		path = FreeFlowMarketsPath
+	}
+	return c.doGET(ctx, path, params)
+}
+```
+
+Add the two new stock methods (free-only semantics, but guarded by freeMode for safety):
+
+```go
+// GetStockTrending returns the hot/trending US stocks list (free endpoint).
+func (c *Client) GetStockTrending(limit int) (*SignalRankingData, error) {
+	params := url.Values{}
+	if limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	body, err := c.doGET(context.Background(), FreeStocksHotPath, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSignalRanking(body)
+}
+
+// GetStockMovers returns stock gainers (direction=gainers) or losers (direction=losers).
+func (c *Client) GetStockMovers(direction string, limit int) (*SignalRankingData, error) {
+	params := url.Values{}
+	params.Set("direction", direction)
+	if limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	body, err := c.doGET(context.Background(), FreeStocksMoversPath, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSignalRanking(body)
+}
+```
+
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `go test ./provider/vergex/ -run 'TestNewFreeClient|TestClient_GetStockMovers' -v`
+Expected: PASS.
+Then run full existing package tests: `go test ./provider/vergex/ -v` — all existing paid-path tests must stay green (freeMode defaults false, so the paid path is unchanged).
+
+- [ ] **Step 7: Build + vet**
+
+Run: `go build ./... && go vet ./...`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add provider/vergex/free.go provider/vergex/free_test.go
-git commit -m "feat(vergex): free vergex.trade client (leaderboard, stock movers, raw detail)"
+git add provider/vergex/client.go provider/vergex/free_mode_test.go
+git commit -m "feat(vergex): free/x402 mode switch on vergex.Client (free vergex.trade paths)"
 ```
 
 ---
@@ -1060,54 +1175,12 @@ git commit -m "feat(nofxos): free vergex.trade trending client (oi/netflow/price
 - Modify: `kernel/engine.go`
 
 **Interfaces:**
-- Consumes: `FreeClient` (Task 4), `FreeTrendingClient` (Task 5), existing `nofxosClient`/`vergexClient`.
-- Produces: `StrategyEngine` gains `freeClient *vergex.FreeClient` and `trending *nofxos.FreeTrendingClient`. `getAI500Coins`, `getOITopCoins`, `getOILowCoins`, netflow/price fetchers use free clients. New handler-compatible methods for netflow/price pools.
+- Consumes: free-mode `vergex.Client` (Task 4 — via `NewFreeClient(baseURL, token, logger)`), `FreeTrendingClient` (Task 5 — via `SetBaseURL`), existing `nofxosClient`/`vergexClient`.
+- Produces: `StrategyEngine` gains `freeClient *vergex.Client` (free-mode) and `trending *nofxos.FreeTrendingClient`. `getAI500Coins`, `getOITopCoins`, `getOILowCoins`, netflow/price fetchers use free clients. New handler-compatible methods for netflow/price pools.
 
 - [ ] **Step 1: Write failing tests for the new getter outputs**
 
 Create `kernel/engine_free_test.go`:
-
-```go
-package kernel
-
-import (
-	"net/http"
-	"net/http/httptest"
-	"testing"
-)
-
-func newTestEngineWithFree(t *testing.T) *StrategyEngine {
-	t.Helper()
-	srvOI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"top":[{"symbol":"BTC","rank":1,"price":63910,"current_oi":1,"oi_delta":1,"oi_delta_percent":1,"oi_delta_value":1,"price_delta_percent":1,"net_long":1,"net_short":1}],"low":[]}`))
-	}))
-	srvLeader := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"items":[{"symbol":"PUMP","bias":"bullish","directionScore":4,"rank":1,"market":{"marketType":"core_perp"}}]}`))
-	}))
-	t.Cleanup(func() { srvOI.Close(); srvLeader.Close() })
-
-	e := &StrategyEngine{config: nil}
-	trending := nofxosFreeTestClient(srvOI.URL)
-	e.trending = trending
-	e.freeClient = vergexFreeTestClient(srvLeader.URL)
-	return e
-}
-```
-
-Add a helper file to avoid import noise — actually the engine already imports `nofxos`, `vergex`, `market`, `store`, `logger`. For the test, construct the free clients directly (they expose `baseURL` unexported — test is `package kernel`, so can't set unexported). **Use `httptest` servers but set the client's http transport to route to the server via a RoundTripper, or add an exported setter.** Simplest: add an exported `SetBaseURL` to each free client in Tasks 4/5. Update those files:
-
-In `provider/vergex/free.go` add:
-```go
-// SetBaseURL overrides the base URL (test/diagnostics).
-func (c *FreeClient) SetBaseURL(u string) { c.baseURL = strings.TrimRight(u, "/") }
-```
-In `provider/nofxos/free.go` add:
-```go
-// SetBaseURL overrides the base URL (test/diagnostics).
-func (c *FreeTrendingClient) SetBaseURL(u string) { c.baseURL = strings.TrimRight(u, "/") }
-```
-
-Write test `kernel/engine_free_test.go`:
 
 ```go
 package kernel
@@ -1151,11 +1224,13 @@ func TestEngine_getVergexSignalCoins_usesFreeLeaderboard(t *testing.T) {
 	defer srv.Close()
 
 	e := &StrategyEngine{}
-	fc := vergex.NewFreeClient("")
-	fc.SetBaseURL(srv.URL)
+	fc, cerr := vergex.NewFreeClient(srv.URL, "", nil)
+	if cerr != nil {
+		t.Fatalf("NewFreeClient: %v", cerr)
+	}
 	e.freeClient = fc
 
-	coins, err := e.getVergexSignalCoins(5, "core_perp", "", "", "all", nil)
+	coins, err := e.getVergexSignalCoins(5, "core_perp", "", "", "all", nil, "")
 	if err != nil {
 		t.Fatalf("getVergexSignalCoins: %v", err)
 	}
@@ -1175,15 +1250,18 @@ Expected: FAIL — `e.trending is nil` / `undefined field` / `getOITopCoins` use
 In `kernel/engine.go`, the `StrategyEngine` struct (around lines 100-110) add fields:
 
 ```go
-	// Free vergex.trade / trending clients (no Claw402 needed)
-	freeClient *vergex.FreeClient
+	// Free vergex.trade client (free-mode) + trending client (no Claw402 needed)
+	freeClient *vergex.Client
 	trending   *nofxos.FreeTrendingClient
 ```
 
 In `NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)` (engine.go:197, body lines ~200-245), initialize both unconditionally before the wallet check:
 
 ```go
-	freeVergex := vergex.NewFreeClient("")
+	freeVergex, err := vergex.NewFreeClient(vergex.DefaultFreeBaseURL, os.Getenv("VERGEX_API_TOKEN"), &logger.MCPLogger{})
+	if err != nil {
+		logger.Warnf("⚠️ Failed to init free Vergex client: %v (using paid path only)", err)
+	}
 	trendingClient := nofxos.NewFreeTrendingClient()
 ```
 
@@ -1399,11 +1477,11 @@ Inside, replace the `e.vergexClient` ranking fetch with a direction-based free f
 	case "gainers", "losers":
 		data, err := e.freeClient.GetStockMovers(direction, limit)
 		ranking, fetchErr = data, err
-	case "" , "bull", "bear", "all":
-		data, err := e.freeClient.GetLeaderboard()
+	case "", "bull", "bear", "all":
+		data, err := e.freeClient.GetSignalRanking(context.Background(), vergex.Query{})
 		ranking, fetchErr = data, err
 	default:
-		data, err := e.freeClient.GetLeaderboard()
+		data, err := e.freeClient.GetSignalRanking(context.Background(), vergex.Query{})
 		ranking, fetchErr = data, err
 	}
 	if fetchErr != nil {
@@ -1439,8 +1517,8 @@ git commit -m "feat(kernel): netflow/price candidate pools + vergex_direction ro
 - Modify: `api/server.go` (route doc text, cosmetic)
 
 **Interfaces:**
-- Consumes: `vergex.NewFreeClient` (Task 4), `resolveStrategyDataWalletKey` (existing, only as token fallback), config token via `config.Get()`.
-- Produces: the 4 vergex routes no longer require a Claw402 wallet, and return free-endpoint data.
+- Consumes: free-mode `vergex.Client` (Task 4 — `NewFreeClient(baseURL, authToken, logger)`), existing `resolveStrategyDataWalletKey` (unchanged, used by the paid path only), `os.Getenv("VERGEX_API_TOKEN")`.
+- Produces: the 4 vergex routes no longer require a Claw402 wallet, and return free-endpoint data via the free-mode `*vergex.Client`.
 
 - [ ] **Step 1: Write failing test (regression: vergex route 400s without wallet)**
 
@@ -1463,20 +1541,27 @@ Note: constructing a full `Server` requires store/config/manager wiring. Given t
 Replace `newVergexClientForRequest` (handler_vergex.go:98-119) with a free-client factory that does not require a wallet:
 
 ```go
-func (s *Server) freeVergexClientForRequest(c *gin.Context) *vergex.FreeClient {
-	userID := c.GetString("user_id")
-	_ = userID // free endpoints are public; token is a global config, not per-user
-	tok := s.config.VergexAPIKey() // see Task 9
-	return vergex.NewFreeClient(tok)
+func (s *Server) freeVergexClientForRequest(c *gin.Context) (*vergex.Client, error) {
+	_ = c.GetString("user_id") // free endpoints are public; token is global config, not per-user
+	client, err := vergex.NewFreeClient(vergex.DefaultFreeBaseURL, os.Getenv("VERGEX_API_TOKEN"), &logger.MCPLogger{})
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
 }
 ```
 
-Update each handler to use it. `handleVergexSignalRanking` becomes:
+Adjust each handler to use it and handle the error. `handleVergexSignalRanking` becomes:
 
 ```go
 func (s *Server) handleVergexSignalRanking(c *gin.Context) {
-	client := s.freeVergexClientForRequest(c)
-	data, err := client.GetLeaderboard()
+	client, cerr := s.freeVergexClientForRequest(c)
+	if cerr != nil {
+		logger.Warnf("Vergex signal-ranking client init failed: %v", cerr)
+		c.JSON(http.StatusBadGateway, gin.H{"error": cerr.Error()})
+		return
+	}
+	data, err := client.GetSignalRanking(context.Background(), vergex.Query{})
 	if err != nil {
 		logger.Warnf("Vergex signal-ranking failed: %v", err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
@@ -1484,8 +1569,8 @@ func (s *Server) handleVergexSignalRanking(c *gin.Context) {
 	}
 	limit := parsePositiveInt(c.Query("limit"), vergex.MaxSignalRankingItems)
 	marketType := strings.TrimSpace(c.Query("marketType"))
-	if strings.TrimSpace(c.Query("direction")) != "" {
-		switch d := strings.TrimSpace(c.Query("direction")); d {
+	if d := strings.TrimSpace(c.Query("direction")); d != "" {
+		switch d {
 		case "gainers", "losers":
 			dd, derr := client.GetStockMovers(d, limit)
 			if derr != nil {
@@ -1507,23 +1592,21 @@ func (s *Server) handleVergexSignalRanking(c *gin.Context) {
 }
 ```
 
-`handleVergexSignalLab` and `handleVergexCostLiquidationHeatmap` become free-client `GetRaw` calls with the market/symbol paths:
+`handleVergexSignalLab` becomes (reusing the mode-aware `GetSignalLab` on the free-mode client):
 
 ```go
 func (s *Server) handleVergexSignalLab(c *gin.Context) {
-	client := s.freeVergexClientForRequest(c)
-	marketType := withDefault(strings.TrimSpace(c.Query("marketType")), vergex.DefaultMarketType)
-	symbol := strings.TrimSpace(c.Query("symbol"))
-	params := url.Values{}
-	chain := strings.TrimSpace(c.Query("chain"))
-	if chain != "" {
-		params.Set("chain", chain)
+	client, cerr := s.freeVergexClientForRequest(c)
+	if cerr != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": cerr.Error()})
+		return
 	}
-	if lb := strings.TrimSpace(c.Query("liqBand")); lb != "" {
-		params.Set("liqBand", lb)
-	}
-	path := detailMarketPath(marketType, symbol) + "/signals"
-	body, err := client.GetRaw(path, params)
+	body, err := client.GetSignalLab(context.Background(), vergex.Query{
+		MarketType: withDefault(strings.TrimSpace(c.Query("marketType")), vergex.DefaultMarketType),
+		Symbol:     strings.TrimSpace(c.Query("symbol")),
+		Chain:      strings.TrimSpace(c.Query("chain")),
+		LiqBand:    strings.TrimSpace(c.Query("liqBand")),
+	})
 	if err != nil {
 		logger.Warnf("Vergex signal-lab failed: %v", err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
@@ -1533,36 +1616,43 @@ func (s *Server) handleVergexSignalLab(c *gin.Context) {
 }
 ```
 
-Add a helper `detailMarketPath(marketType, symbol)`:
+`handleVergexCostLiquidationHeatmap` mirrors it with `GetCostLiquidationHeatmap`:
 
 ```go
-func detailMarketPath(marketType, symbol string) string {
-	mt := marketType
-	if mt == "" {
-		mt = vergex.DefaultMarketType
+func (s *Server) handleVergexCostLiquidationHeatmap(c *gin.Context) {
+	client, cerr := s.freeVergexClientForRequest(c)
+	if cerr != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": cerr.Error()})
+		return
 	}
-	return "/api/v1/data-intelligence/markets/" + mt + "/" + vergex.MarketSymbol(mt, symbol)
+	body, err := client.GetCostLiquidationHeatmap(context.Background(), vergex.Query{
+		MarketType: withDefault(strings.TrimSpace(c.Query("marketType")), vergex.DefaultMarketType),
+		Symbol:     strings.TrimSpace(c.Query("symbol")),
+		Chain:      strings.TrimSpace(c.Query("chain")),
+		LiqBand:    strings.TrimSpace(c.Query("liqBand")),
+	})
+	if err != nil {
+		logger.Warnf("Vergex cost-liquidation-heatmap failed: %v", err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.Data(http.StatusOK, "application/json; charset=utf-8", body)
 }
 ```
-
-`handleVergexCostLiquidationHeatmap` mirrors it with `"/riskbins"`.
 
 `handleVergexFlowMarkets` becomes:
 
 ```go
 func (s *Server) handleVergexFlowMarkets(c *gin.Context) {
-	client := s.freeVergexClientForRequest(c)
+	client, cerr := s.freeVergexClientForRequest(c)
+	if cerr != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": cerr.Error()})
+		return
+	}
+	chain := withDefault(strings.TrimSpace(c.Query("chain")), "mainnet")
 	window := withDefault(strings.TrimSpace(c.Query("window")), "1h")
 	limit := parsePositiveInt(c.Query("limit"), 25)
-	params := url.Values{}
-	params.Set("window", window)
-	if limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", limit))
-	}
-	if ch := strings.TrimSpace(c.Query("chain")); ch != "" {
-		params.Set("chain", ch)
-	}
-	body, err := client.GetRaw(vergex.FlowMarketsPath, params)
+	body, err := client.GetFlowMarkets(context.Background(), chain, window, limit)
 	if err != nil {
 		logger.Warnf("Vergex flow-markets failed: %v", err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
@@ -1572,7 +1662,7 @@ func (s *Server) handleVergexFlowMarkets(c *gin.Context) {
 }
 ```
 
-Add `"net/url"` to imports.
+Add `"os"` and `"context"` to the imports.
 
 - [ ] **Step 3: Update route doc text in `server.go`**
 
@@ -1606,29 +1696,11 @@ git commit -m "feat(api): serve vergex endpoints from free vergex.trade without 
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `freeVergexClientForRequest` reads `os.Getenv("VERGEX_API_TOKEN")` (optional) and passes it to `vergex.NewFreeClient`.
+- Produces: `.env.example` documents `VERGEX_API_TOKEN`. The handler token read is already wired in Task 8's `freeVergexClientForRequest` (`os.Getenv("VERGEX_API_TOKEN")`), so this task is documentation only.
 
 Note: the `api.Server` struct has **no `config` field** (verified `api/server.go:21-31`), so the token is read directly from the environment rather than threaded through `config`. This avoids adding an unused config method.
 
-- [ ] **Step 1: Wire token into `freeVergexClientForRequest`**
-
-In `api/handler_vergex.go`, ensure `freeVergexClientForRequest` reads the token from env:
-
-```go
-func (s *Server) freeVergexClientForRequest(c *gin.Context) *vergex.FreeClient {
-	_ = c.GetString("user_id")
-	return vergex.NewFreeClient(os.Getenv("VERGEX_API_TOKEN"))
-}
-```
-
-Add `"os"` to imports if not present.
-
-- [ ] **Step 2: Build + vet**
-
-Run: `go build ./... && go vet ./...`
-Expected: PASS.
-
-- [ ] **Step 3: Document env var in `.env.example`**
+- [ ] **Step 1: Document env var in `.env.example`**
 
 Append to `.env.example`:
 ```
@@ -1636,11 +1708,22 @@ Append to `.env.example`:
 VERGEX_API_TOKEN=
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 2: Build + vet**
+
+Run: `go build ./... && go vet ./...`
+Expected: PASS (no code change needed in this task beyond `.env.example`).
+
+Append to `.env.example`:
+```
+# Optional vergex.trade Bearer token for per-coin detail endpoints (riskbins etc.)
+VERGEX_API_TOKEN=
+```
+
+- [ ] **Step 3: Commit**
 
 ```bash
-git add config/config.go api/handler_vergex.go .env.example
-git commit -m "feat(config): optional VERGEX_API_TOKEN for authed detail endpoints"
+git add .env.example
+git commit -m "docs(env): document optional VERGEX_API_TOKEN for authed detail endpoints"
 ```
 
 ---
@@ -1694,6 +1777,7 @@ git commit -m "chore(data-alt): final verification fixes"
 
 ## Self-Review Notes
 
-- **Spec coverage:** Tasks 1-2 (variant plumbing / factory), 3 (schema), 4-5 (free clients), 6-7 (engine), 8 (handlers), 9 (token), 10 (verify) cover every item in the corrected design: replace paid sources, fix 4 collapsing families, crypto/stock bias split, token config, no new source types beyond the needed netflow/price enums.
-- **Type consistency:** `ScopeVariant` values match what `buildCoinSource` and `getVergexSignalCoins` consume (`bull/bear/trending/gainers/losers/top/low/inflow/outflow/volume`). Backend config field names (`VergexDirection`, `NetflowLimit`, `PriceLimit`, source_types `netflow_top`/`netflow_low`/`price_top`/`price_low`) match across tasks.
+- **Spec coverage:** Tasks 1-2 (variant plumbing / factory), 3 (schema), 4 (vergex.Client free/x402 mode switch), 5 (nofxos FreeTrendingClient), 6-7 (engine), 8 (handlers), 9 (token doc), 10 (verify) cover every item in the corrected design: reuse the paid vergex pipeline end-to-end with a free transport, fix 4 collapsing families, crypto/stock bias split, token config, no new source types beyond the needed netflow/price enums.
+- **Type consistency:** `ScopeVariant` values match what `buildCoinSource` and `getVergexSignalCoins` consume. Backend config field names (`VergexDirection`, `NetflowLimit`, `PriceLimit`, source_types `netflow_top`/`netflow_low`/`price_top`/`price_low`) match across tasks. Reused `vergex.Client` methods (`GetSignalRanking`, `GetSignalLab`, `GetCostLiquidationHeatmap`, `GetFlowMarkets`) keep their signatures; free-mode variants add `GetStockTrending`/`GetStockMovers` and a `NewFreeClient(baseURL, authToken, logger)` constructor.
 - **Placeholder check:** all test files contain literal test code; all implementation steps contain literal Go/TS. Task 8's automated-test step is conditional (depends on whether `newTestServer` exists) — flagged explicitly rather than left vague.
+- **Pipe-collision avoided:** no duplicate `FlowMarketsPath`; free path consts use a `Free` prefix and live in the same `const` block as the paid paths (Task 4).
