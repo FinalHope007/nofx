@@ -175,17 +175,25 @@ func TestFormatVergexData_omitsUnavailableForNonVergex(t *testing.T) {
 		SignalLabError: "vergex endpoint has no data for this market",
 		HeatmapError:   "vergex endpoint has no data for this market",
 	}
-	out := e.formatVergexData(analysis, false)
-	if strings.Contains(out, "unavailable") {
-		t.Errorf("generic user prompt should not contain 'unavailable', got: %s", out)
+	// ai500 => omitUnavailable = true; neither section has data => block fully omitted
+	out := e.formatVergexData(analysis, true)
+	if out != "" {
+		t.Errorf("generic user prompt should fully omit the signals block for no-data symbols, got: %q", out)
 	}
-	if strings.Contains(out, "Signal Lab") || strings.Contains(out, "Heatmap") {
-		t.Errorf("generic user prompt should omit empty sections, got: %s", out)
+
+	// When detail IS present, the signals are rendered (with the error-cleared copy).
+	analysis.SignalLab = json.RawMessage(`{"data":{"bias":"bullish"}}`)
+	out = e.formatVergexData(analysis, true)
+	if !strings.Contains(out, "Signal Lab") {
+		t.Errorf("generic user prompt should render Signal Lab when present, got: %q", out)
+	}
+	if strings.Contains(out, "unavailable") {
+		t.Errorf("generic user prompt should not contain 'unavailable', got: %q", out)
 	}
 }
 ```
 
-Ensure imports `store`, `vergex`, `strings` are present in the test file (add if needed).
+Ensure the test file imports `store`, `vergex`, `strings`, and `encoding/json` (add any missing). It currently imports `nofx/provider/vergex` and `nofx/provider/nofxos`; add `nofx/store`, `strings`, and `encoding/json` as needed.
 
 - [ ] **Step 2: Run to confirm fail**
 
