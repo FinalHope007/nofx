@@ -74,16 +74,39 @@ func TestFreeDetailSymbol(t *testing.T) {
 		symbol     string
 		want       string
 	}{
+		// crypto symbols -> core_perp form (no address), regardless of marketType
 		{"core_perp", "BTC", "core_perp:BTC"},
 		{"core_perp", "core_perp:BTC", "core_perp:BTC"},
+		{"perp", "BTC", "core_perp:BTC"},
+		{"perp", "ETH", "core_perp:ETH"},
+		{"perp", "PERP:LIT", "core_perp:LIT"},
+		{"hip3_perp", "PUMP", "core_perp:PUMP"},
+		{"all", "PUMP", "core_perp:PUMP"},
+		// stock/xyz symbols -> hip3_perp form (address-qualified)
 		{"hip3_perp", "xyz:SP500", "hip3_perp:0x88806a71d74ad0a510b350545c9ae490912f0888:xyz:SP500"},
 		{"hip3_perp", "SP500", "hip3_perp:0x88806a71d74ad0a510b350545c9ae490912f0888:xyz:SP500"},
-		{"all", "PUMP", "all:0x88806a71d74ad0a510b350545c9ae490912f0888:xyz:PUMP"},
 	}
 	for _, c := range cases {
 		got := FreeDetailSymbol(c.marketType, c.symbol)
 		if got != c.want {
 			t.Errorf("FreeDetailSymbol(%q, %q) = %q, want %q", c.marketType, c.symbol, got, c.want)
+		}
+	}
+}
+
+func TestResolveDetailMarket(t *testing.T) {
+	cases := []struct{ symbol, want string }{
+		{"BTC", "core_perp"},
+		{"core_perp:BTC", "core_perp"},
+		{"perp:ETH", "core_perp"},
+		{"PUMP", "core_perp"},
+		{"xyz:SP500", "hip3_perp"},
+		{"SP500", "hip3_perp"},
+	}
+	for _, c := range cases {
+		got := resolveDetailMarket(c.symbol)
+		if got != c.want {
+			t.Errorf("resolveDetailMarket(%q) = %q, want %q", c.symbol, got, c.want)
 		}
 	}
 }

@@ -49,27 +49,50 @@ const (
 	freeDetailXYZDeployer = "0x88806a71d74ad0a510b350545c9ae490912f0888"
 )
 
+// stripDetailSymbolQualifier removes a leading vergex market-type qualifier
+// (e.g. "core_perp:", "perp:", "hip3_perp:") from a symbol so the bare base /
+// asset family can be resolved. Unknown symbols are returned unchanged.
+func stripDetailSymbolQualifier(sym string) string {
+	up := strings.ToUpper(strings.TrimSpace(sym))
+	for _, p := range []string{"CORE_PERP:", "HIP3_PERP:", "PERP:"} {
+		if strings.HasPrefix(up, p) {
+			return sym[len(p):]
+		}
+	}
+	return sym
+}
+
+// resolveDetailMarket returns the concrete vergex detail market type for a
+// symbol: "hip3_perp" for xyz/stock assets, else "core_perp" for crypto. The
+// symbol's asset family is authoritative; the passed marketType is advisory
+// (frontend may send "perp", "all", "hip3_perp", etc.).
+func resolveDetailMarket(symbol string) string {
+	if hyperliquid.IsXYZAsset(stripDetailSymbolQualifier(symbol)) {
+		return "hip3_perp"
+	}
+	return "core_perp"
+}
+
 // FreeDetailSymbol returns the market-qualified symbol that vergex.trade free
 // per-coin detail endpoints expect in the path:
 //   - crypto (core_perp):   "core_perp:BTC"
 //   - stock (hip3_perp):    "hip3_perp:0x8880...:xyz:SP500"
 //
-// The returned string still contains ':' (callers URL-encode as needed).
+// The market type is resolved from the SYMBOL's asset family (not the passed
+// marketType), so a crypto symbol always yields the core_perp form regardless
+// of a "perp"/"all"/"hip3_perp" marketType. The returned string still contains
+// ':' (callers URL-encode as needed).
 func FreeDetailSymbol(marketType, symbol string) string {
-	mt := normalizeMarketType(marketType)
-	base := QuerySymbol(symbol)
+	refSym := stripDetailSymbolQualifier(symbol)
+	base := QuerySymbol(refSym)
 	if base == "" {
 		return ""
 	}
-	// If the symbol already carries a marketType: qualifier (e.g.
-	// "core_perp:BTC"), strip it so the bare base is extracted.
-	if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(symbol)), strings.ToUpper(marketType)+":") {
-		base = QuerySymbol(strings.TrimSpace(symbol)[len(marketType)+1:])
+	mt := resolveDetailMarket(symbol)
+	if mt == "hip3_perp" {
+		return mt + ":" + freeDetailXYZDeployer + ":xyz:" + base
 	}
-	if isCoreMarketType(mt) {
-		return marketType + ":" + base
-	}
-	return marketType + ":" + freeDetailXYZDeployer + ":xyz:" + base
+	return mt + ":" + base
 }
 
 type Client struct {
@@ -194,7 +217,8 @@ func (c *Client) GetSignalLab(ctx context.Context, q Query) (json.RawMessage, er
 			params.Set("liqBand", q.LiqBand)
 		}
 		sym := strings.ReplaceAll(FreeDetailSymbol(q.MarketType, q.Symbol), ":", "%3A")
-		path := fmt.Sprintf(FreeSignalsPath, q.MarketType, sym)
+		mt := resolveDetailMarket(q.Symbol)
+		path := fmt.Sprintf(FreeSignalsPath, mt, sym)
 		return c.doGET(ctx, path, params)
 	}
 	params := url.Values{}
@@ -215,7 +239,8 @@ func (c *Client) GetCostLiquidationHeatmap(ctx context.Context, q Query) (json.R
 			params.Set("liqBand", q.LiqBand)
 		}
 		sym := strings.ReplaceAll(FreeDetailSymbol(q.MarketType, q.Symbol), ":", "%3A")
-		path := fmt.Sprintf(FreeRiskbinsPath, q.MarketType, sym)
+		mt := resolveDetailMarket(q.Symbol)
+		path := fmt.Sprintf(FreeRiskbinsPath, mt, sym)
 		return c.doGET(ctx, path, params)
 	}
 	params := url.Values{}
