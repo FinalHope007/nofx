@@ -111,6 +111,10 @@ export interface CoinSourceConfig {
     | 'ai500'
     | 'oi_top'
     | 'oi_low'
+    | 'netflow_top'
+    | 'netflow_low'
+    | 'price_top'
+    | 'price_low'
     | 'hyper_all'
     | 'hyper_main'
     | 'hyper_rank'
@@ -224,6 +228,13 @@ export interface RiskControlConfig {
 }
 
 // A single selected trading-scope card (from the scope wizard step).
+export type ScopeVariant =
+  | 'bull' | 'bear' | 'trending'   // vergex bias + stock trending
+  | 'gainers' | 'losers'           // hyper_rank / vergex movers / price
+  | 'top' | 'low'                  // oi top/low, netflow, price (rank array)
+  | 'inflow' | 'outflow'           // netflow direction
+  | 'volume'                       // hyper_rank volume
+
 export interface ScopeUnit {
   id: string
   category: 'crypto' | 'stock'
@@ -237,9 +248,9 @@ export interface ScopeUnit {
     | 'nofxos_oi'
     | 'nofxos_price'
     | 'other'
-  // Optional per-source qualifier (only for sources that use a direction,
-  // e.g. hyper_rank gainers/losers/volume). Absent for AI500/OI/Netflow etc.
-  direction?: 'gainers' | 'losers' | 'volume'
+  // Per-source rank-direction qualifier so the backend can pick the exact
+  // free endpoint (and top/low array) for the chosen card.
+  variant?: ScopeVariant
   limit: number
   label: string
   provider: 'free' | 'paid'

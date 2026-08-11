@@ -1,4 +1,4 @@
-import type { ScopeUnit } from '../../types/strategy'
+import type { ScopeUnit, ScopeVariant } from '../../types/strategy'
 
 export interface ScopeCardDef {
   id: string
@@ -7,7 +7,7 @@ export interface ScopeCardDef {
   description: string
   provider: 'free' | 'paid'
   source_type: ScopeUnit['source_type']
-  direction?: 'gainers' | 'losers' | 'volume'
+  variant?: ScopeVariant
   defaultLimit: number
 }
 
@@ -16,7 +16,7 @@ const freeHyperRank = (
   id: string,
   label: string,
   description: string,
-  direction: 'gainers' | 'losers' | 'volume'
+  variant: ScopeVariant
 ): ScopeCardDef => ({
   id,
   category: 'crypto',
@@ -24,7 +24,7 @@ const freeHyperRank = (
   description,
   provider: 'free',
   source_type: 'hyper_rank',
-  direction,
+  variant,
   defaultLimit: 10,
 })
 
@@ -56,6 +56,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'VergeX bullish bias radar',
     provider: 'paid',
     source_type: 'vergex',
+    variant: 'bull',
     defaultLimit: 10,
   },
   {
@@ -65,6 +66,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'VergeX bearish bias radar',
     provider: 'paid',
     source_type: 'vergex',
+    variant: 'bear',
     defaultLimit: 10,
   },
   {
@@ -83,6 +85,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'Open interest increase (nofxos)',
     provider: 'paid',
     source_type: 'nofxos_oi',
+    variant: 'top',
     defaultLimit: 10,
   },
   {
@@ -92,6 +95,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'Open interest decrease (nofxos)',
     provider: 'paid',
     source_type: 'nofxos_oi',
+    variant: 'low',
     defaultLimit: 10,
   },
   {
@@ -101,6 +105,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'Top netflow (nofxos)',
     provider: 'paid',
     source_type: 'nofxos_netflow',
+    variant: 'inflow',
     defaultLimit: 10,
   },
   {
@@ -110,6 +115,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'Top net outflow (nofxos)',
     provider: 'paid',
     source_type: 'nofxos_netflow',
+    variant: 'outflow',
     defaultLimit: 10,
   },
   {
@@ -119,6 +125,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'Top gainers via nofxos',
     provider: 'paid',
     source_type: 'nofxos_price',
+    variant: 'gainers',
     defaultLimit: 10,
   },
   {
@@ -128,6 +135,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'Top losers via nofxos',
     provider: 'paid',
     source_type: 'nofxos_price',
+    variant: 'losers',
     defaultLimit: 10,
   },
 
@@ -139,6 +147,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'VergeX US-stock bullish bias radar',
     provider: 'paid',
     source_type: 'vergex',
+    variant: 'bull',
     defaultLimit: 10,
   },
   {
@@ -148,6 +157,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'VergeX US-stock bearish bias radar',
     provider: 'paid',
     source_type: 'vergex',
+    variant: 'bear',
     defaultLimit: 10,
   },
   {
@@ -157,6 +167,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'Trending US stocks (VergeX)',
     provider: 'paid',
     source_type: 'vergex',
+    variant: 'trending',
     defaultLimit: 10,
   },
   {
@@ -166,6 +177,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'US stock gainers (VergeX)',
     provider: 'paid',
     source_type: 'vergex',
+    variant: 'gainers',
     defaultLimit: 10,
   },
   {
@@ -175,6 +187,7 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     description: 'US stock losers (VergeX)',
     provider: 'paid',
     source_type: 'vergex',
+    variant: 'losers',
     defaultLimit: 10,
   },
 ]
@@ -187,6 +200,6 @@ export function toScopeUnit(def: ScopeCardDef, limit: number): ScopeUnit {
     limit,
     label: def.label,
     provider: def.provider,
-    ...(def.direction ? { direction: def.direction } : {}),
+    ...(def.variant ? { variant: def.variant } : {}),
   }
 }
