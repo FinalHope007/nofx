@@ -888,6 +888,8 @@ git commit -m "feat(vergex): free/x402 mode switch on vergex.Client (free vergex
   - `(c *FreeTrendingClient) GetPriceTop(limit) ([]PriceRankingItem, error)` / `GetPriceLow(limit) ([]PriceRankingItem, error)` — `tab=price`
   - `(c *FreeTrendingClient) GetAI500() ([]CoinData, error)` — `trending-category?lang=en&key=ai500` → wraps `.category.assets[]` into `CoinData`.
 
+Note: as with Task 4, the tests hit an `httptest` loopback server while the client uses `security.SafeHTTPClient` (SSRF-guarded), so each test calls `t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")` to opt in to local servers. No production code change.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `provider/nofxos/free_test.go`:
@@ -902,6 +904,7 @@ import (
 )
 
 func TestFreeTrendingClient_GetOITop(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
 	body := `{"top":[{"symbol":"BTC","rank":1,"price":63910,"current_oi":100,"oi_delta":5,"oi_delta_percent":15.5,"oi_delta_value":150000,"price_delta_percent":2.1,"net_long":10,"net_short":5}],"low":[]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("tab") != "oi" {
@@ -924,6 +927,7 @@ func TestFreeTrendingClient_GetOITop(t *testing.T) {
 }
 
 func TestFreeTrendingClient_GetPriceLow(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
 	body := `{"top":[],"low":[{"pair":"ETHUSDT","symbol":"ETH","price_delta":-0.12,"price":3000,"future_flow":0,"spot_flow":0,"oi":0,"oi_delta":0,"oi_delta_value":0}]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("tab") != "price" {
@@ -945,6 +949,7 @@ func TestFreeTrendingClient_GetPriceLow(t *testing.T) {
 }
 
 func TestFreeTrendingClient_GetAI500(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
 	body := `{"category":{"assets":[{"symbol":"CYS","pair":"CYSUSDT","score":75.0,"startTime":1785852000,"startPrice":0.51,"changePctValue":143.7}]}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(body))
