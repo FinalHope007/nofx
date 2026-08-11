@@ -6,13 +6,13 @@ import {
 } from './strategyFactory'
 import type { ScopeUnit } from '../../types/strategy'
 
-const freeUnit = (direction: 'gainers' | 'losers' | 'volume'): ScopeUnit => ({
-  id: `crypto-${direction}`,
+const freeUnit = (variant: 'gainers' | 'losers' | 'volume'): ScopeUnit => ({
+  id: `crypto-${variant}`,
   category: 'crypto',
   source_type: 'hyper_rank',
-  direction,
+  variant,
   limit: 10,
-  label: `Top ${direction}`,
+  label: `Top ${variant}`,
   provider: 'free',
 })
 

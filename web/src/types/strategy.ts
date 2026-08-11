@@ -136,6 +136,11 @@ export interface CoinSourceConfig {
   hyper_rank_category?: 'stock' | 'commodity' | 'index' | 'forex' | 'pre_ipo' | 'crypto' | 'all';
   hyper_rank_direction?: 'gainers' | 'losers' | 'volume';
   hyper_rank_limit?: number;
+  // Netflow / price ranking pool (candidate source) limits
+  netflow_limit?: number;
+  price_limit?: number;
+  // Vergex sub-card selector: 'bull'|'bear'|'trending'|'gainers'|'losers'
+  vergex_direction?: string;
   vergex_limit?: number;
   vergex_market_type?: string;
   vergex_chain?: string;

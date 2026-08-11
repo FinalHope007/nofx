@@ -57,19 +57,13 @@ export function buildCoinSource(
       source_type: 'hyper_rank',
       scope_mode: mode,
       hyper_rank_category: unit.category,
-      hyper_rank_direction: unit.direction || 'gainers',
+      hyper_rank_direction: unit.variant as 'gainers' | 'losers' | 'volume' | undefined || 'gainers',
       hyper_rank_limit: clamp(unit.limit, 1, 50),
-      static_coins: [],
-      excluded_coins: [],
-      use_ai500: false,
-      ai500_limit: 0,
-      use_oi_top: false,
-      oi_top_limit: 0,
-      use_oi_low: false,
-      oi_low_limit: 0,
-      use_hyper_all: false,
-      use_hyper_main: false,
-      vergex_limit: 0,
+      static_coins: [], excluded_coins: [],
+      use_ai500: false, ai500_limit: 0,
+      use_oi_top: false, oi_top_limit: 0,
+      use_oi_low: false, oi_low_limit: 0,
+      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
     }
   }
 
@@ -91,21 +85,62 @@ export function buildCoinSource(
     }
   }
 
+  if (unit?.source_type === 'nofxos_oi') {
+    const isTop = unit.variant === 'top'
+    return {
+      source_type: isTop ? 'oi_top' : 'oi_low',
+      scope_mode: mode,
+      use_oi_top: isTop,
+      oi_top_limit: isTop ? clamp(unit.limit, 1, 50) : 0,
+      use_oi_low: !isTop,
+      oi_low_limit: !isTop ? clamp(unit.limit, 1, 50) : 0,
+      static_coins: [], excluded_coins: [],
+      use_ai500: false, ai500_limit: 0,
+      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+    }
+  }
+
+  if (unit?.source_type === 'nofxos_netflow') {
+    const isInflow = unit.variant !== 'outflow'
+    return {
+      source_type: isInflow ? 'netflow_top' : 'netflow_low',
+      scope_mode: mode,
+      netflow_limit: clamp(unit.limit, 1, 50),
+      static_coins: [], excluded_coins: [],
+      use_ai500: false, ai500_limit: 0,
+      use_oi_top: false, oi_top_limit: 0,
+      use_oi_low: false, oi_low_limit: 0,
+      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+    }
+  }
+
+  if (unit?.source_type === 'nofxos_price') {
+    const isGainers = unit.variant !== 'losers'
+    return {
+      source_type: isGainers ? 'price_top' : 'price_low',
+      scope_mode: mode,
+      price_limit: clamp(unit.limit, 1, 50),
+      static_coins: [], excluded_coins: [],
+      use_ai500: false, ai500_limit: 0,
+      use_oi_top: false, oi_top_limit: 0,
+      use_oi_low: false, oi_low_limit: 0,
+      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+    }
+  }
+
   if (unit?.source_type === 'vergex') {
+    const marketType = unit.category === 'stock' ? 'hip3_perp' : 'core_perp'
     return {
       source_type: 'vergex_signal',
       scope_mode: mode,
       vergex_limit: clamp(unit.limit, 1, 50),
-      static_coins: [],
-      excluded_coins: [],
-      use_ai500: false,
-      ai500_limit: 0,
-      use_oi_top: false,
-      oi_top_limit: 0,
-      use_oi_low: false,
-      oi_low_limit: 0,
-      use_hyper_all: false,
-      use_hyper_main: false,
+      vergex_market_type: marketType,
+      vergex_direction: unit.variant,
+      static_coins: [], excluded_coins: [],
+      use_ai500: false, ai500_limit: 0,
+      use_oi_top: false, oi_top_limit: 0,
+      use_oi_low: false, oi_low_limit: 0,
+      use_hyper_all: false, use_hyper_main: false,
     }
   }
 
