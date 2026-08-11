@@ -498,7 +498,7 @@ Rationale (per user): the `flow`/`signal` layers were showing DEFAULT Claw402 da
 After `liveStrategy` is fetched (already at lines 189-194), add:
 
 ```tsx
-const activeSourceType = liveStrategy?.ai_config?.coin_source?.source_type ?? ''
+const activeSourceType = liveStrategy?.config.ai_config?.coin_source?.source_type ?? ''
 const isVergexSignal = activeSourceType === 'vergex_signal'
 ```
 
