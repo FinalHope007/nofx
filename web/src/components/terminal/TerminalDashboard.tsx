@@ -195,16 +195,16 @@ export function TerminalDashboard({
   const activeSourceType = liveStrategy?.config.ai_config?.coin_source?.source_type ?? ''
   const isVergexSignal = activeSourceType === 'vergex_signal'
   const { data: realFlow } = useSWR(
-    traderId ? ['flow-markets', traderId] : null,
+    isVergexSignal && traderId ? ['flow-markets', traderId] : null,
     () => api.getFlowMarkets(selectedTrader?.ai_model, 'mainnet', '1h', 50, true),
-    // paid x402 endpoint — poll slowly (5m) to conserve claw402 funds; the
-    // topology beam animation is client-side and stays fast regardless
+    // paid x402 endpoint — only poll for vergex_signal strategies (which use the
+    // flow/signal topology layers); poll slowly (5m) to conserve claw402 funds.
     { refreshInterval: 300000, shouldRetryOnError: false }
   )
   const { data: realSignalRank } = useSWR(
-    traderId ? ['signal-rank', traderId] : null,
+    isVergexSignal && traderId ? ['signal-rank', traderId] : null,
     () => api.getSignalRanking(selectedTrader?.ai_model, 'mainnet', 'all', 30, true),
-    // paid x402 endpoint — poll slowly (5m) to conserve claw402 funds
+    // paid x402 endpoint — only poll for vergex_signal strategies
     { refreshInterval: 300000, shouldRetryOnError: false }
   )
 
