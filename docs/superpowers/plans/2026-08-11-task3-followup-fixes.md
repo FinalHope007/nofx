@@ -234,10 +234,11 @@ func (e *StrategyEngine) formatVergexData(data *vergex.MarketAnalysis, omitUnava
 		return ""
 	}
 	// For non-vergex strategies, if neither signal-lab nor heatmap has data,
-	// render nothing at all (generic prompt stays kline-only).
+	// render nothing at all (generic prompt stays kline-only). This is true
+	// even when the analysis carries an error string — a symbol with only an
+	// error and no data must be omitted, not shown as "unavailable".
 	if omitUnavailable &&
-		len(data.SignalLab) == 0 && data.SignalLabError == "" &&
-		len(data.Heatmap) == 0 && data.HeatmapError == "" {
+		len(data.SignalLab) == 0 && len(data.Heatmap) == 0 {
 		return ""
 	}
 	// Work on a shallow copy so we never mutate the shared MarketAnalysis.
