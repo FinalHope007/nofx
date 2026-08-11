@@ -380,6 +380,34 @@ func (e *StrategyEngine) GetCandidateCoins() ([]CandidateCoin, error) {
 		// Empty list is a normal condition, return directly
 		return e.filterExcludedCoins(coins), nil
 
+	case "netflow_top":
+		coins, err := e.getNetflowTopCoins(coinSource.NetflowLimit)
+		if err != nil {
+			return nil, err
+		}
+		return e.filterExcludedCoins(coins), nil
+
+	case "netflow_low":
+		coins, err := e.getNetflowLowCoins(coinSource.NetflowLimit)
+		if err != nil {
+			return nil, err
+		}
+		return e.filterExcludedCoins(coins), nil
+
+	case "price_top":
+		coins, err := e.getPriceTopCoins(coinSource.PriceLimit)
+		if err != nil {
+			return nil, err
+		}
+		return e.filterExcludedCoins(coins), nil
+
+	case "price_low":
+		coins, err := e.getPriceLowCoins(coinSource.PriceLimit)
+		if err != nil {
+			return nil, err
+		}
+		return e.filterExcludedCoins(coins), nil
+
 	case "hyper_all":
 		// All Hyperliquid perp coins
 		if !coinSource.UseHyperAll {
