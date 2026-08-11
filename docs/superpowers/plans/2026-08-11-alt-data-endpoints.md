@@ -1701,7 +1701,7 @@ func (s *Server) handleVergexFlowMarkets(c *gin.Context) {
 }
 ```
 
-Add `"os"` and `"context"` to the imports.
+Add `"os"` to the imports (`context` is already imported in this file).
 
 - [ ] **Step 3: Update route doc text in `server.go`**
 
