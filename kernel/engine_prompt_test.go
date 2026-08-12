@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"nofx/provider/nofxos"
 	"nofx/store"
 )
 
@@ -111,6 +112,19 @@ func TestBuildSystemPromptDoesNotForceLongOnlyForSingleXYZ(t *testing.T) {
 		if strings.Contains(prompt, phrase) {
 			t.Fatalf("single XYZ prompt still contains forced-long phrase %q:\n%s", phrase, prompt)
 		}
+	}
+}
+
+func TestEnginePerCoinSignals_StoreAndGet(t *testing.T) {
+	cfg := store.GetDefaultStrategyConfig("en")
+	e := NewStrategyEngine(&cfg)
+	if s, ok := e.PerCoinSignalFor("BTCUSDT"); ok {
+		t.Fatalf("unexpected existing signal for BTCUSDT: %+v", s)
+	}
+	sig := PerCoinSignal{AI500: &nofxos.CoinData{Pair: "CYSUSDT", Score: 78.3}}
+	e.SetPerCoinSignals(map[string]PerCoinSignal{"CYSUSDT": sig})
+	if s, ok := e.PerCoinSignalFor("CYSUSDT"); !ok || s.AI500 == nil || s.AI500.Score != 78.3 {
+		t.Fatalf("PerCoinSignalFor: %+v", s)
 	}
 }
 

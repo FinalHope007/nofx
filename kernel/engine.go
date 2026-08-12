@@ -184,12 +184,22 @@ type OIDeltaData struct {
 // StrategyEngine - Core Strategy Execution Engine
 // ============================================================================
 
+// PerCoinSignal carries the free per-coin enrichment data for one symbol
+// (AI500 score, OI / netflow / price change per selected duration).
+type PerCoinSignal struct {
+	AI500   *nofxos.CoinData                        // may be nil
+	OI      map[string]map[string]nofxos.OIPosition // duration -> list(top/low) -> data
+	Netflow map[string]map[string]nofxos.NetFlowPosition
+	Price   map[string]map[string]nofxos.PriceRankingItem
+}
+
 // StrategyEngine strategy execution engine
 type StrategyEngine struct {
 	config             *store.StrategyConfig
 	nofxosClient       *nofxos.Client
 	vergexClient       *vergex.Client
 	vergexRankingCache map[string]*vergex.SignalRankItem
+	perCoinSignals     map[string]PerCoinSignal
 
 	// Free vergex.trade client (free-mode) + trending client (no Claw402 needed)
 	freeClient *vergex.Client
@@ -246,6 +256,7 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 			nofxosClient:       client,
 			vergexClient:       vergexClient,
 			vergexRankingCache: make(map[string]*vergex.SignalRankItem),
+			perCoinSignals:     make(map[string]PerCoinSignal),
 			freeClient:         freeVergex,
 			trending:           trendingClient,
 		}
@@ -255,6 +266,7 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 		config:             config,
 		nofxosClient:       client,
 		vergexRankingCache: make(map[string]*vergex.SignalRankItem),
+		perCoinSignals:     make(map[string]PerCoinSignal),
 		freeClient:         freeVergex,
 		trending:           trendingClient,
 	}
@@ -305,6 +317,20 @@ func (e *StrategyEngine) SetExchange(exchange string) {
 // GetConfig gets complete strategy configuration
 func (e *StrategyEngine) GetConfig() *store.StrategyConfig {
 	return e.config
+}
+
+// SetPerCoinSignals stores the per-coin enrichment signals keyed by symbol.
+func (e *StrategyEngine) SetPerCoinSignals(signals map[string]PerCoinSignal) {
+	e.perCoinSignals = signals
+}
+
+// PerCoinSignalFor returns the retained per-coin signal for a symbol.
+func (e *StrategyEngine) PerCoinSignalFor(symbol string) (PerCoinSignal, bool) {
+	if e == nil || e.perCoinSignals == nil {
+		return PerCoinSignal{}, false
+	}
+	s, ok := e.perCoinSignals[symbol]
+	return s, ok
 }
 
 // ============================================================================
