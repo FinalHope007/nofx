@@ -4,6 +4,7 @@ import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { useStrategyDraft } from './draftStore'
 import { strategyManagerApi } from './strategyApi'
 import { buildStrategyConfig } from './strategyFactory'
+import { defaultDataSources } from './dataSourceDefaults'
 import { notify } from '../../lib/notify'
 import { api } from '../../lib/api'
 import { useAuth } from '../../contexts/AuthContext'
@@ -11,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext'
 type Mode = 'create' | 'edit'
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d']
+const DURATIONS = ['15m', '30m', '1h', '4h', '8h', '12h', '24h']
 
 export function EditorStepPage() {
   const navigate = useNavigate()
@@ -39,6 +41,24 @@ export function EditorStepPage() {
   )
   const [saving, setSaving] = useState(false)
 
+  const initialSources = defaultDataSources(scope.units)
+  const [enableAI500Data, setEnableAI500Data] = useState(
+    initialSources.enableAI500Data
+  )
+  const [enableOIData, setEnableOIData] = useState(initialSources.enableOIData)
+  const [enableNetflowData, setEnableNetflowData] = useState(
+    initialSources.enableNetflowData
+  )
+  const [enablePriceData, setEnablePriceData] = useState(
+    initialSources.enablePriceData
+  )
+  const [enableEma, setEnableEma] = useState(false)
+  const [enableMacd, setEnableMacd] = useState(false)
+  const [enableRsi, setEnableRsi] = useState(false)
+  const [enableOi, setEnableOi] = useState(false)
+  const [enableFundingRate, setEnableFundingRate] = useState(false)
+  const [dataDurations, setDataDurations] = useState<string[]>(['1h', '24h'])
+
   useEffect(() => {
     if (mode !== 'edit' || !strategyId || !token) {
       setLoading(false)
@@ -56,14 +76,43 @@ export function EditorStepPage() {
           return
         }
         const ai = strategy.config.ai_config
+        const ind = ai?.indicators
         setName(strategy.name)
         setPrompt(ai?.custom_prompt ?? '')
         setBtcEthLeverage(ai?.risk_control.btc_eth_max_leverage ?? 5)
         setAltLeverage(ai?.risk_control.altcoin_max_leverage ?? 5)
         setBtcEthRatio(ai?.risk_control.btc_eth_max_position_value_ratio ?? 5)
         setAltRatio(ai?.risk_control.altcoin_max_position_value_ratio ?? 5)
-        setTimeframes(ai?.indicators.klines.selected_timeframes ?? ['15m'])
+        setTimeframes(ind?.klines.selected_timeframes ?? ['15m'])
         setExcluded((ai?.coin_source.excluded_coins ?? []).join(', '))
+
+        const hasDataSourceFlags =
+          ind?.enable_ai500_data !== undefined ||
+          ind?.enable_oi_data !== undefined ||
+          ind?.enable_netflow_data !== undefined ||
+          ind?.enable_price_data !== undefined
+        if (hasDataSourceFlags) {
+          setEnableAI500Data(ind?.enable_ai500_data ?? false)
+          setEnableOIData(ind?.enable_oi_data ?? false)
+          setEnableNetflowData(ind?.enable_netflow_data ?? false)
+          setEnablePriceData(ind?.enable_price_data ?? false)
+        } else {
+          const defaults = defaultDataSources(scope.units)
+          setEnableAI500Data(defaults.enableAI500Data)
+          setEnableOIData(defaults.enableOIData)
+          setEnableNetflowData(defaults.enableNetflowData)
+          setEnablePriceData(defaults.enablePriceData)
+        }
+        setEnableEma(ind?.enable_ema ?? false)
+        setEnableMacd(ind?.enable_macd ?? false)
+        setEnableRsi(ind?.enable_rsi ?? false)
+        setEnableOi(ind?.enable_oi ?? false)
+        setEnableFundingRate(ind?.enable_funding_rate ?? false)
+        setDataDurations(
+          ind?.data_durations && ind.data_durations.length
+            ? ind.data_durations
+            : ['1h', '24h']
+        )
       } catch (err) {
         notify.error(
           err instanceof Error ? err.message : 'Failed to load strategy'
@@ -72,7 +121,7 @@ export function EditorStepPage() {
         setLoading(false)
       }
     })()
-  }, [mode, strategyId, token])
+  }, [mode, strategyId, token, scope.units])
 
   const backPath =
     mode === 'create'
@@ -82,6 +131,12 @@ export function EditorStepPage() {
   const toggleTimeframe = (tf: string) => {
     setTimeframes((prev) =>
       prev.includes(tf) ? prev.filter((t) => t !== tf) : [...prev, tf]
+    )
+  }
+
+  const toggleDuration = (d: string) => {
+    setDataDurations((prev) =>
+      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
     )
   }
 
@@ -116,6 +171,16 @@ export function EditorStepPage() {
           recent_count: decisionCount,
           mode: contextMode,
         },
+        enableAI500Data,
+        enableOIData,
+        enableNetflowData,
+        enablePriceData,
+        dataDurations,
+        enableEma,
+        enableMacd,
+        enableRsi,
+        enableOi,
+        enableFundingRate,
         scopeUnits: scope.units,
         scopeMode: scope.mode,
       })
@@ -280,6 +345,90 @@ export function EditorStepPage() {
               max={10}
               step={0.5}
             />
+          </div>
+        </fieldset>
+
+        <fieldset className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg-deeper p-4">
+          <legend className="px-2 text-sm font-semibold text-nofx-text">
+            Data sources for LLM
+          </legend>
+          <div className="mb-4">
+            <span className="text-sm text-nofx-text-muted">
+              Per-coin data to include in the prompt
+            </span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <ToggleChip
+                label="AI500"
+                active={enableAI500Data}
+                onClick={() => setEnableAI500Data(!enableAI500Data)}
+              />
+              <ToggleChip
+                label="OI"
+                active={enableOIData}
+                onClick={() => setEnableOIData(!enableOIData)}
+              />
+              <ToggleChip
+                label="Netflow"
+                active={enableNetflowData}
+                onClick={() => setEnableNetflowData(!enableNetflowData)}
+              />
+              <ToggleChip
+                label="Price"
+                active={enablePriceData}
+                onClick={() => setEnablePriceData(!enablePriceData)}
+              />
+            </div>
+          </div>
+
+          {enableOIData || enableNetflowData || enablePriceData ? (
+            <div className="mb-4">
+              <span className="text-sm text-nofx-text-muted">
+                Data durations
+              </span>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {DURATIONS.map((d) => (
+                  <ToggleChip
+                    key={d}
+                    label={d}
+                    active={dataDurations.includes(d)}
+                    onClick={() => toggleDuration(d)}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div>
+            <span className="text-sm text-nofx-text-muted">
+              Basic indicators
+            </span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <ToggleChip
+                label="EMA20"
+                active={enableEma}
+                onClick={() => setEnableEma(!enableEma)}
+              />
+              <ToggleChip
+                label="MACD"
+                active={enableMacd}
+                onClick={() => setEnableMacd(!enableMacd)}
+              />
+              <ToggleChip
+                label="RSI7"
+                active={enableRsi}
+                onClick={() => setEnableRsi(!enableRsi)}
+              />
+              <ToggleChip
+                label="OI"
+                active={enableOi}
+                onClick={() => setEnableOi(!enableOi)}
+              />
+              <ToggleChip
+                label="Funding rate"
+                active={enableFundingRate}
+                onClick={() => setEnableFundingRate(!enableFundingRate)}
+              />
+            </div>
           </div>
         </fieldset>
 
