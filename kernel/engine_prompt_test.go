@@ -225,6 +225,24 @@ func TestFormatPerCoinSignals_omitsMissing(t *testing.T) {
 	}
 }
 
+func TestFormatUSDCompact_negative(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want string
+	}{
+		{-5.0e5, "-$500.0K"},
+		{-5.0e6, "-$5.0M"},
+		{5.0e6, "$5.0M"},
+		{-123, "-$123.00"},
+		{0, "$0.00"},
+	}
+	for _, c := range cases {
+		if got := formatUSDCompact(c.in); got != c.want {
+			t.Errorf("formatUSDCompact(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestFormatPerCoinSignals_negativeOIDeltaRendersDecrease(t *testing.T) {
 	cfg := store.GetDefaultStrategyConfig("en")
 	cfg.Indicators.EnableOIData = true
@@ -240,6 +258,9 @@ func TestFormatPerCoinSignals_negativeOIDeltaRendersDecrease(t *testing.T) {
 	out := e.formatPerCoinSignals("CYSUSDT", 1.3821)
 	if !strings.Contains(out, "[1h \u00b7 Decrease]") {
 		t.Fatalf("expected decrease-marked OI line with negative delta:\n%s", out)
+	}
+	if !strings.Contains(out, "-$500.0K") {
+		t.Fatalf("expected compact negative OI delta rendered as -$500.0K:\n%s", out)
 	}
 }
 

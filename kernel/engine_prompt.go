@@ -1083,15 +1083,21 @@ func (e *StrategyEngine) formatPriceListLine(dur string, p nofxos.PriceRankingIt
 }
 
 func formatUSDCompact(v float64) string {
+	sign := ""
+	abs := v
+	if v < 0 {
+		sign = "-"
+		abs = -v
+	}
 	switch {
-	case v >= 1e9:
-		return fmt.Sprintf("$%.1fB", v/1e9)
-	case v >= 1e6:
-		return fmt.Sprintf("$%.1fM", v/1e6)
-	case v >= 1e3:
-		return fmt.Sprintf("$%.1fK", v/1e3)
+	case abs >= 1e9:
+		return fmt.Sprintf("%s$%.1fB", sign, abs/1e9)
+	case abs >= 1e6:
+		return fmt.Sprintf("%s$%.1fM", sign, abs/1e6)
+	case abs >= 1e3:
+		return fmt.Sprintf("%s$%.1fK", sign, abs/1e3)
 	default:
-		return fmt.Sprintf("$%.2f", v)
+		return fmt.Sprintf("%s$%.2f", sign, abs)
 	}
 }
 
