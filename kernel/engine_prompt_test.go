@@ -182,6 +182,67 @@ func TestAttachPerCoinSignals_filtersToCandidates(t *testing.T) {
 	}
 }
 
+func TestFormatPerCoinSignals_rendersEnabledSources(t *testing.T) {
+	cfg := store.GetDefaultStrategyConfig("en")
+	cfg.Indicators.EnableAI500Data = true
+	cfg.Indicators.EnableOIData = true
+	cfg.Indicators.EnableNetflowData = true
+	cfg.Indicators.EnablePriceData = true
+	cfg.Indicators.DataDurations = []string{"1h"}
+	e := NewStrategyEngine(&cfg)
+
+	e.SetPerCoinSignals(map[string]PerCoinSignal{
+		"CYSUSDT": {
+			AI500:   &nofxos.CoinData{Pair: "CYSUSDT", Score: 78.3, PeakScore: 87, StartPrice: 0.5117, IncreasePercent: 180.9},
+			OI:      map[string]map[string]nofxos.OIPosition{"1h": {"top:CYSUSDT": {Symbol: "CYSUSDT", Rank: 4, OIDeltaValue: 1.2e6, OIDeltaPercent: 5.3, PriceDeltaPercent: 3.1, CurrentOI: 3.85e7, NetLong: 12e6, NetShort: 9e6}}},
+			Netflow: map[string]map[string]nofxos.NetFlowPosition{"1h": {"top:CYSUSDT": {Symbol: "CYSUSDT", Rank: 7, Amount: 2.4e6, Price: 1.3821}}},
+			Price:   map[string]map[string]nofxos.PriceRankingItem{"1h": {"top:CYSUSDT": {Symbol: "CYSUSDT", PriceDelta: 0.031, SpotFlow: 0.9e6, FutureFlow: 0.8e6, OIDeltaValue: 5.3e6, Price: 1.3821}}},
+		},
+	})
+
+	out := e.formatPerCoinSignals("CYSUSDT", 1.3821)
+	if out == "" {
+		t.Fatalf("expected non-empty render")
+	}
+	for _, want := range []string{"AI500 Signal", "AI score 78.3", "peak score 87", "since starting alert", "Open Interest", "[1h \u00b7 Increase]", "Net Flow", "inflow", "Price Change", "price change +3.1%"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestFormatPerCoinSignals_omitsMissing(t *testing.T) {
+	cfg := store.GetDefaultStrategyConfig("en")
+	cfg.Indicators.EnableAI500Data = true
+	cfg.Indicators.EnableOIData = true
+	cfg.Indicators.EnableNetflowData = true
+	cfg.Indicators.EnablePriceData = true
+	e := NewStrategyEngine(&cfg)
+
+	out := e.formatPerCoinSignals("CYSUSDT", 1.3821)
+	if out != "" {
+		t.Fatalf("expected empty render for symbol with no data, got:\n%s", out)
+	}
+}
+
+func TestFormatPerCoinSignals_negativeOIDeltaRendersDecrease(t *testing.T) {
+	cfg := store.GetDefaultStrategyConfig("en")
+	cfg.Indicators.EnableOIData = true
+	cfg.Indicators.DataDurations = []string{"1h"}
+	e := NewStrategyEngine(&cfg)
+
+	e.SetPerCoinSignals(map[string]PerCoinSignal{
+		"CYSUSDT": {
+			OI: map[string]map[string]nofxos.OIPosition{"1h": {"low:CYSUSDT": {Symbol: "CYSUSDT", Rank: 2, OIDeltaPercent: -4.2, OIDeltaValue: -5.0e5, PriceDeltaPercent: -1.0, CurrentOI: 1.0e7, NetLong: 1.0e6, NetShort: 2.0e6}}},
+		},
+	})
+
+	out := e.formatPerCoinSignals("CYSUSDT", 1.3821)
+	if !strings.Contains(out, "[1h \u00b7 Decrease]") {
+		t.Fatalf("expected decrease-marked OI line with negative delta:\n%s", out)
+	}
+}
+
 func containsCJK(text string) bool {
 	for _, r := range text {
 		if r >= 0x4E00 && r <= 0x9FFF {

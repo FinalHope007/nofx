@@ -6,6 +6,7 @@ import (
 	"nofx/provider/nofxos"
 	"nofx/provider/vergex"
 	"nofx/store"
+	"sort"
 	"strings"
 	"time"
 )
@@ -909,6 +910,7 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 				sb.WriteString(e.formatVergexData(vergexData, omit))
 			}
 		}
+		sb.WriteString(e.formatPerCoinSignals(coin.Symbol, marketData.CurrentPrice))
 		sb.WriteString("\n")
 	}
 	sb.WriteString("\n")
@@ -980,10 +982,117 @@ func (e *StrategyEngine) formatPositionInfo(index int, pos PositionInfo, ctx *Co
 				sb.WriteString(e.formatVergexData(vergexData, omit))
 			}
 		}
+		sb.WriteString(e.formatPerCoinSignals(pos.Symbol, marketData.CurrentPrice))
 		sb.WriteString("\n")
 	}
 
 	return sb.String()
+}
+
+func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float64) string {
+	cfg := e.GetConfig()
+	ind := cfg.Indicators
+	if !ind.EnableAI500Data && !ind.EnableOIData && !ind.EnableNetflowData && !ind.EnablePriceData {
+		return ""
+	}
+	sig, ok := e.PerCoinSignalFor(symbol)
+	if !ok || sig.AI500 == nil && len(sig.OI) == 0 && len(sig.Netflow) == 0 && len(sig.Price) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+
+	if ind.EnableAI500Data && sig.AI500 != nil {
+		sb.WriteString(fmt.Sprintf("=== %s AI500 Signal ===\n", symbol))
+		sb.WriteString(fmt.Sprintf("AI score %.1f/100 | peak score %.0f | current price %.4f | start price %.4f | change %+.1f%% since starting alert\n\n",
+			sig.AI500.Score, sig.AI500.PeakScore, currentPrice, sig.AI500.StartPrice, sig.AI500.IncreasePercent))
+	}
+
+	if ind.EnableOIData && len(sig.OI) > 0 {
+		sb.WriteString(fmt.Sprintf("=== %s Open Interest ===\n", symbol))
+		for _, dur := range e.durationOrder(ind.DataDurations) {
+			if m, ok := sig.OI[dur]; ok {
+				if p, ok := m["top:"+symbol]; ok {
+					sb.WriteString(e.formatOIListLine(dur, "Increase", p))
+				}
+				if p, ok := m["low:"+symbol]; ok {
+					sb.WriteString(e.formatOIListLine(dur, "Decrease", p))
+				}
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	if ind.EnableNetflowData && len(sig.Netflow) > 0 {
+		sb.WriteString(fmt.Sprintf("=== %s Net Flow ===\n", symbol))
+		for _, dur := range e.durationOrder(ind.DataDurations) {
+			if m, ok := sig.Netflow[dur]; ok {
+				if p, ok := m["top:"+symbol]; ok {
+					sb.WriteString(e.formatNetflowListLine(dur, "inflow", p))
+				}
+				if p, ok := m["low:"+symbol]; ok {
+					sb.WriteString(e.formatNetflowListLine(dur, "outflow", p))
+				}
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	if ind.EnablePriceData && len(sig.Price) > 0 {
+		sb.WriteString(fmt.Sprintf("=== %s Price Change ===\n", symbol))
+		for _, dur := range e.durationOrder(ind.DataDurations) {
+			if m, ok := sig.Price[dur]; ok {
+				if p, ok := m["top:"+symbol]; ok {
+					sb.WriteString(e.formatPriceListLine(dur, p))
+				}
+				if p, ok := m["low:"+symbol]; ok {
+					sb.WriteString(e.formatPriceListLine(dur, p))
+				}
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+func (e *StrategyEngine) durationOrder(durs []string) []string {
+	order := []string{"5m", "15m", "30m", "1h", "4h", "8h", "12h", "24h"}
+	rank := map[string]int{}
+	for i, d := range order {
+		rank[d] = i
+	}
+	sort.SliceStable(durs, func(i, j int) bool { return rank[durs[i]] < rank[durs[j]] })
+	return durs
+}
+
+func (e *StrategyEngine) formatOIListLine(dur, list string, p nofxos.OIPosition) string {
+	return fmt.Sprintf("[%s \u00b7 %s] rank #%d | OI change %+.1f%% (%s) | price %+.1f%% | OI %s | long net %s / short net %s\n",
+		dur, list, p.Rank,
+		p.OIDeltaPercent, formatUSDCompact(p.OIDeltaValue),
+		p.PriceDeltaPercent, formatUSDCompact(p.CurrentOI),
+		formatUSDCompact(p.NetLong), formatUSDCompact(p.NetShort))
+}
+
+func (e *StrategyEngine) formatNetflowListLine(dur, dir string, p nofxos.NetFlowPosition) string {
+	return fmt.Sprintf("[%s \u00b7 %s] rank #%d | net flow %s | price %.4f\n", dur, dir, p.Rank, formatUSDCompact(p.Amount), p.Price)
+}
+
+func (e *StrategyEngine) formatPriceListLine(dur string, p nofxos.PriceRankingItem) string {
+	return fmt.Sprintf("[%s] price change %+.1f%% | spot %s / future %s | OI delta %s\n",
+		dur, p.PriceDelta*100, formatUSDCompact(p.SpotFlow), formatUSDCompact(p.FutureFlow), formatUSDCompact(p.OIDeltaValue))
+}
+
+func formatUSDCompact(v float64) string {
+	switch {
+	case v >= 1e9:
+		return fmt.Sprintf("$%.1fB", v/1e9)
+	case v >= 1e6:
+		return fmt.Sprintf("$%.1fM", v/1e6)
+	case v >= 1e3:
+		return fmt.Sprintf("$%.1fK", v/1e3)
+	default:
+		return fmt.Sprintf("$%.2f", v)
+	}
 }
 
 func (e *StrategyEngine) formatCoinSourceTag(sources []string) string {
