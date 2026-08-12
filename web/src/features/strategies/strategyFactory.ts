@@ -20,6 +20,16 @@ export interface StrategyEditorForm {
   decisionContext: DecisionContextConfig
   scopeUnits: ScopeUnit[]
   scopeMode: 'overlap' | 'union'
+  enableAI500Data?: boolean
+  enableOIData?: boolean
+  enableNetflowData?: boolean
+  enablePriceData?: boolean
+  dataDurations?: string[]
+  enableEma?: boolean
+  enableMacd?: boolean
+  enableRsi?: boolean
+  enableOi?: boolean
+  enableFundingRate?: boolean
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -205,14 +215,19 @@ export function buildStrategyConfig(form: StrategyEditorForm): StrategyConfig {
           selected_timeframes: form.selectedTimeframes,
         },
         enable_raw_klines: true,
-        enable_ema: false,
-        enable_macd: false,
-        enable_rsi: false,
+        enable_ema: form.enableEma ?? false,
+        enable_macd: form.enableMacd ?? false,
+        enable_rsi: form.enableRsi ?? false,
         enable_atr: false,
         enable_boll: false,
         enable_volume: false,
-        enable_oi: false,
-        enable_funding_rate: false,
+        enable_oi: form.enableOi ?? false,
+        enable_funding_rate: form.enableFundingRate ?? false,
+        enable_ai500_data: form.enableAI500Data ?? false,
+        enable_oi_data: form.enableOIData ?? false,
+        enable_netflow_data: form.enableNetflowData ?? false,
+        enable_price_data: form.enablePriceData ?? false,
+        data_durations: form.dataDurations && form.dataDurations.length ? form.dataDurations : undefined,
         nofxos_api_key: '',
         enable_quant_data: false,
         enable_quant_oi: false,

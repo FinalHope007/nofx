@@ -190,6 +190,13 @@ export interface IndicatorConfig {
   enable_price_ranking?: boolean;
   price_ranking_duration?: string;  // "1h", "4h", "24h" or "1h,4h,24h"
   price_ranking_limit?: number;
+
+  // Free per-coin data sources exposed to the LLM prompt (optional toggles)
+  enable_ai500_data?: boolean;
+  enable_oi_data?: boolean;
+  enable_netflow_data?: boolean;
+  enable_price_data?: boolean;
+  data_durations?: string[];
 }
 
 export interface KlineConfig {

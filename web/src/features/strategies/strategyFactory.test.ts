@@ -99,6 +99,29 @@ describe('strategy factory', () => {
     expect(risk.altcoin_max_position_value_ratio).toBe(3)
   })
 
+  it('maps data-source toggles and durations into indicators', () => {
+    const cfg = buildStrategyConfig({
+      name: 'Test', custom_prompt: '', scan_interval_minutes: 15,
+      btcEthMaxLeverage: 5, altcoinMaxLeverage: 5,
+      btcEthPositionRatio: 5, altcoinPositionRatio: 5,
+      isCrossMargin: true, selectedTimeframes: ['15m'], excludedCoins: [],
+      decisionContext: { enabled: true, recent_count: 8, mode: 'structured' },
+      scopeUnits: [freeUnit('gainers')], scopeMode: 'union',
+      enableAI500Data: true, enableOIData: true, enableNetflowData: true,
+      enablePriceData: true, dataDurations: ['15m', '1h'],
+      enableEma: true, enableMacd: true, enableRsi: true,
+    })
+    const ind = cfg.ai_config?.indicators
+    expect(ind?.enable_ai500_data).toBe(true)
+    expect(ind?.enable_oi_data).toBe(true)
+    expect(ind?.enable_netflow_data).toBe(true)
+    expect(ind?.enable_price_data).toBe(true)
+    expect(ind?.data_durations).toEqual(['15m', '1h'])
+    expect(ind?.enable_ema).toBe(true)
+    expect(ind?.enable_macd).toBe(true)
+    expect(ind?.enable_rsi).toBe(true)
+  })
+
   it('builds a full config with decision context persisted', () => {
     const cfg = buildStrategyConfig({
       name: 'Test',
