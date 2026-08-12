@@ -35,9 +35,12 @@ must NOT be tangled with them.
   carries bias data.
 - For a shared duration multiselect `[15m, 30m, 1h, 4h, 8h, 12h, 24h]` that applies
   to OI, Netflow, and Price (AI500 has no duration).
-- Per-coin embedding: each candidate coin's section shows the enabled sources that
-  data exists for; sources/durations with no matching row for a coin are silently
-  omitted (no error/warning text).
+- Per-coin embedding: each candidate coin's section — and each **open position's**
+  section — shows the enabled sources that data exists for; sources/durations with
+  no matching row for a coin are silently omitted (no error/warning text). The
+  same data-source enrichment applies identically to positions as to candidates
+  (e.g. a held BTC position gets its AI500/OI/netflow/price lines when enabled and
+  available).
 
 ## Non-Goals
 
@@ -154,9 +157,10 @@ fetch each enabled source for the shared durations via the `FreeTrendingClient`
 prompt builder. Reuse existing `Context` fields or add the minimal per-coin maps.
 
 ### Prompt renderer (`kernel/engine_prompt.go`)
-In `BuildUserPrompt` candidate loop (and position loop), after the quant/vergex
-blocks, emit per-coin sections for each enabled source with data. Exact format in
-"Prompt format" below. Missing rows are silently skipped.
+In `BuildUserPrompt`, both the candidate coin loop and the **open position loop**
+emit per-coin sections for each enabled source with data (positions use
+`formatPositionInfo`, which must receive the same source enrichment). Exact format
+in "Prompt format" below. Missing rows are silently skipped.
 
 > Basic-indicator rendering needs no change — `formatMarketData` already handles it;
 > the only fix is that the wizard can now turn those toggles on.
