@@ -6,6 +6,7 @@ import (
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
+	"nofx/provider/nofxos"
 	"nofx/store"
 	"regexp"
 	"strings"
@@ -162,6 +163,157 @@ func enrichVergexDataWithStrategy(ctx *Context, engine *StrategyEngine) {
 		}
 	}
 	ctx.VergexDataMap = engine.FetchVergexDataBatch(nil, symbols)
+}
+
+// ============================================================================
+// Per-coin free data sources (candidates + positions)
+// ============================================================================
+
+// AttachPerCoinSignals is the exported wrapper around attachPerCoinSignals,
+// used by the trader loop to fetch and attach per-coin free data sources.
+func AttachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
+	return attachPerCoinSignals(ctx, engine)
+}
+
+// attachPerCoinSignals fetches the enabled free per-coin data sources for the
+// current candidate + position symbols and stores them on the engine for the
+// prompt builder. Networks/sources with no data for a symbol are skipped.
+func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
+	if ctx == nil || engine == nil {
+		return nil
+	}
+	cfg := engine.GetConfig()
+	if !cfg.Indicators.EnableAI500Data && !cfg.Indicators.EnableOIData &&
+		!cfg.Indicators.EnableNetflowData && !cfg.Indicators.EnablePriceData {
+		return nil
+	}
+
+	symSet := make(map[string]bool)
+	for _, c := range ctx.CandidateCoins {
+		symSet[c.Symbol] = true
+	}
+	for _, p := range ctx.Positions {
+		symSet[p.Symbol] = true
+	}
+
+	durations := cfg.Indicators.DataDurations
+	if len(durations) == 0 {
+		durations = []string{"24h"}
+	}
+	const limit = 50
+
+	out := make(map[string]PerCoinSignal)
+
+	if cfg.Indicators.EnableAI500Data {
+		coins, err := engine.trending.GetAI500()
+		if err == nil {
+			for i := range coins {
+				norm := market.Normalize(coins[i].Pair)
+				if !symSet[norm] {
+					continue
+				}
+				sig := out[norm]
+				c := coins[i]
+				sig.AI500 = &c
+				out[norm] = sig
+			}
+		} else {
+			logger.Warnf("⚠️ AI500 prompt data fetch failed: %v", err)
+		}
+	}
+
+	oiByDur := make(map[string]map[string]nofxos.OIPosition)
+	nfByDur := make(map[string]map[string]nofxos.NetFlowPosition)
+	pxByDur := make(map[string]map[string]nofxos.PriceRankingItem)
+
+	for _, dur := range durations {
+		if cfg.Indicators.EnableOIData {
+			env, err := engine.trending.GetOIData(dur, limit)
+			if err == nil {
+				oiByDur[dur] = oiListsToMap(env.Top, env.Low, symSet)
+			} else {
+				logger.Warnf("⚠️ OI prompt data fetch failed (%s): %v", dur, err)
+			}
+		}
+		if cfg.Indicators.EnableNetflowData {
+			env, err := engine.trending.GetNetflowData(dur, limit)
+			if err == nil {
+				nfByDur[dur] = netflowListsToMap(env.Top, env.Low, symSet)
+			} else {
+				logger.Warnf("⚠️ netflow prompt data fetch failed (%s): %v", dur, err)
+			}
+		}
+		if cfg.Indicators.EnablePriceData {
+			env, err := engine.trending.GetPriceData(dur, limit)
+			if err == nil {
+				pxByDur[dur] = priceListsToMap(env.Top, env.Low, symSet)
+			} else {
+				logger.Warnf("⚠️ price prompt data fetch failed (%s): %v", dur, err)
+			}
+		}
+	}
+
+	for sym := range symSet {
+		sig := out[sym]
+		sig.OI = oiByDur
+		sig.Netflow = nfByDur
+		sig.Price = pxByDur
+		out[sym] = sig
+	}
+
+	engine.SetPerCoinSignals(out)
+	return nil
+}
+
+func oiListsToMap(top, low []nofxos.OIPosition, symSet map[string]bool) map[string]nofxos.OIPosition {
+	m := make(map[string]nofxos.OIPosition)
+	for _, p := range top {
+		s := market.Normalize(p.Symbol)
+		if symSet[s] {
+			m["top:"+s] = p
+		}
+	}
+	for _, p := range low {
+		s := market.Normalize(p.Symbol)
+		if symSet[s] {
+			m["low:"+s] = p
+		}
+	}
+	return m
+}
+
+func netflowListsToMap(top, low []nofxos.NetFlowPosition, symSet map[string]bool) map[string]nofxos.NetFlowPosition {
+	m := make(map[string]nofxos.NetFlowPosition)
+	for _, p := range top {
+		s := market.Normalize(p.Symbol)
+		if symSet[s] {
+			m["top:"+s] = p
+		}
+	}
+	for _, p := range low {
+		s := market.Normalize(p.Symbol)
+		if symSet[s] {
+			m["low:"+s] = p
+		}
+	}
+	return m
+}
+
+func priceListsToMap(top, low []nofxos.PriceRankingItem, symSet map[string]bool) map[string]nofxos.PriceRankingItem {
+	m := make(map[string]nofxos.PriceRankingItem)
+	for _, p := range top {
+		s := market.Normalize(p.Symbol)
+		if symSet[s] {
+			m["top:"+s] = p
+		}
+	}
+	for _, p := range low {
+		s := market.Normalize(p.Symbol)
+		if symSet[s] {
+			m["low:"+s] = p
+		}
+	}
+	return m
 }
 
 // ============================================================================
