@@ -71,6 +71,28 @@ func (c *StrategyConfig) ClampLimits() {
 		c.Indicators.Klines.SelectedTimeframes = c.Indicators.Klines.SelectedTimeframes[:MaxTimeframes]
 	}
 
+	// Clamp data durations to the supported per-coin data-source set.
+	supportedDurations := []string{"15m", "30m", "1h", "4h", "8h", "12h", "24h"}
+	seen := map[string]bool{}
+	var kept []string
+	for _, d := range c.Indicators.DataDurations {
+		d = strings.TrimSpace(d)
+		if seen[d] {
+			continue
+		}
+		for _, s := range supportedDurations {
+			if d == s {
+				seen[d] = true
+				kept = append(kept, d)
+				break
+			}
+		}
+	}
+	if len(kept) == 0 {
+		kept = []string{"24h"}
+	}
+	c.Indicators.DataDurations = kept
+
 	// Clamp max positions
 	if c.RiskControl.MaxPositions < 1 {
 		c.RiskControl.MaxPositions = 1
@@ -932,6 +954,14 @@ type IndicatorConfig struct {
 	EnablePriceRanking   bool   `json:"enable_price_ranking"`             // whether to enable price ranking data
 	PriceRankingDuration string `json:"price_ranking_duration,omitempty"` // durations: "1h" or "1h,4h,24h"
 	PriceRankingLimit    int    `json:"price_ranking_limit,omitempty"`    // number of entries per ranking (default 10)
+
+	// Free per-coin data sources exposed to the LLM prompt (independent of the
+	// market-wide ranking toggles above).
+	EnableAI500Data   bool     `json:"enable_ai500_data"`        // AI500 score
+	EnableOIData      bool     `json:"enable_oi_data"`           // OI change
+	EnableNetflowData bool     `json:"enable_netflow_data"`      // net flow
+	EnablePriceData   bool     `json:"enable_price_data"`        // price change
+	DataDurations     []string `json:"data_durations,omitempty"` // 15m..24h
 }
 
 // KlineConfig K-line configuration
@@ -1065,6 +1095,7 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 			EnablePriceRanking:     false,
 			PriceRankingDuration:   "1h,4h,24h",
 			PriceRankingLimit:      10,
+			DataDurations:          []string{"1h", "24h"},
 		},
 		RiskControl: RiskControlConfig{
 			MaxPositions:                 2,   // Few, concentrated positions held for big moves (CODE ENFORCED)
@@ -1438,6 +1469,20 @@ func (c *StrategyConfig) EstimateTokens() TokenEstimate {
 	// OI + Funding per coin
 	if c.Indicators.EnableOI || c.Indicators.EnableFundingRate {
 		totalMarketChars += numCoins * 100
+	}
+
+	// Per-coin data-source enrich (free sources exposed to the LLM prompt)
+	if c.Indicators.EnableAI500Data {
+		totalMarketChars += numCoins * 120
+	}
+	if c.Indicators.EnableOIData {
+		totalMarketChars += numCoins * 40 * len(c.Indicators.DataDurations)
+	}
+	if c.Indicators.EnableNetflowData {
+		totalMarketChars += numCoins * 30 * len(c.Indicators.DataDurations)
+	}
+	if c.Indicators.EnablePriceData {
+		totalMarketChars += numCoins * 30 * len(c.Indicators.DataDurations)
 	}
 
 	breakdown.MarketData = totalMarketChars / 4 // numeric data: ~4 chars per token

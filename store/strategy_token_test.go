@@ -1,6 +1,10 @@
 package store
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func TestEstimateTokens_DefaultConfig(t *testing.T) {
 	config := GetDefaultStrategyConfig("en")
@@ -108,5 +112,41 @@ func TestGetEffectiveCoinCount(t *testing.T) {
 	config.CoinSource.AI500Limit = 5
 	if got := config.getEffectiveCoinCount(); got != 5 {
 		t.Errorf("ai500 coin count = %d, want 5", got)
+	}
+}
+
+func TestIndicatorConfigDataSourceFieldsRoundTrip(t *testing.T) {
+	cfg := GetDefaultStrategyConfig("en")
+	cfg.StrategyType = "ai_trading"
+	cfg.Indicators.EnableAI500Data = true
+	cfg.Indicators.EnableOIData = true
+	cfg.Indicators.EnableNetflowData = true
+	cfg.Indicators.EnablePriceData = true
+	cfg.Indicators.DataDurations = []string{"15m", "1h"}
+
+	// Marshal uses the product schema (StrategyConfig.MarshalJSON) nesting
+	// these under ai_config.indicators.
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(raw), `"enable_ai500_data":true`) {
+		t.Fatalf("enable_ai500_data missing: %s", string(raw))
+	}
+	if !strings.Contains(string(raw), `"data_durations":["15m","1h"]`) {
+		t.Fatalf("data_durations missing: %s", string(raw))
+	}
+
+	// Unmarshal back and confirm the fields survive the round-trip.
+	var restored StrategyConfig
+	if err := json.Unmarshal(raw, &restored); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !restored.Indicators.EnableAI500Data || !restored.Indicators.EnableOIData ||
+		!restored.Indicators.EnableNetflowData || !restored.Indicators.EnablePriceData {
+		t.Fatalf("unmarshal lost data-source toggles: %+v", restored.Indicators)
+	}
+	if len(restored.Indicators.DataDurations) != 2 {
+		t.Fatalf("unmarshal lost data_durations: %v", restored.Indicators.DataDurations)
 	}
 }
