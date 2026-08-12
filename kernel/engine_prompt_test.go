@@ -143,13 +143,13 @@ func TestAttachPerCoinSignals_filtersToCandidates(t *testing.T) {
 	fsrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/trending-category":
-			w.Write([]byte(`{"category":{"assets":[{"symbol":"BTC","pair":"BTCUSDT","score":78.3,"startPrice":0.5,"startTime":1785852000,"changePctValue":37.5,"signal":"Peak 87"}]}}`))
+			w.Write([]byte(`{"category":{"assets":[{"symbol":"BTC","pair":"BTCUSDT","score":78.3,"startPrice":0.5,"startTime":1785852000,"changePctValue":37.5,"signal":"Peak 87"},{"symbol":"ETH","pair":"ETHUSDT","score":55.1,"startPrice":18.0,"startTime":1785852000,"changePctValue":12.0,"signal":"Low 50"}]}}`))
 		case r.URL.Query().Get("tab") == "oi":
-			w.Write([]byte(`{"top":[{"symbol":"BTC","rank":1,"price":63910,"current_oi":1,"oi_delta":1,"oi_delta_percent":5.0,"oi_delta_value":1,"price_delta_percent":3.0,"net_long":1,"net_short":1}],"low":[]}`))
+			w.Write([]byte(`{"top":[{"symbol":"BTC","rank":1,"price":63910,"current_oi":1,"oi_delta":1,"oi_delta_percent":5.0,"oi_delta_value":1,"price_delta_percent":3.0,"net_long":1,"net_short":1},{"symbol":"ETH","rank":2,"price":500,"current_oi":1,"oi_delta":1,"oi_delta_percent":4.0,"oi_delta_value":1,"price_delta_percent":2.0,"net_long":1,"net_short":1}],"low":[]}`))
 		case r.URL.Query().Get("tab") == "net_flow":
-			w.Write([]byte(`{"top":[{"amount":29309691.42,"price":64119.7,"price_delta_percent":0.23,"rank":7,"symbol":"BTCUSDT"}],"low":[]}`))
+			w.Write([]byte(`{"top":[{"amount":29309691.42,"price":64119.7,"price_delta_percent":0.23,"rank":7,"symbol":"BTCUSDT"},{"amount":1000000.0,"price":500.0,"price_delta_percent":0.10,"rank":8,"symbol":"ETHUSDT"}],"low":[]}`))
 		case r.URL.Query().Get("tab") == "price":
-			w.Write([]byte(`{"top":[{"pair":"BTCUSDT","symbol":"BTC","price_delta":0.031,"price":63910,"future_flow":0.8e6,"spot_flow":0.9e6,"oi":100,"oi_delta":10,"oi_delta_value":5.3e6}],"low":[]}`))
+			w.Write([]byte(`{"top":[{"pair":"BTCUSDT","symbol":"BTC","price_delta":0.031,"price":63910,"future_flow":0.8e6,"spot_flow":0.9e6,"oi":100,"oi_delta":10,"oi_delta_value":5.3e6},{"pair":"ETHUSDT","symbol":"ETH","price_delta":0.021,"price":500,"future_flow":0.2e6,"spot_flow":0.3e6,"oi":50,"oi_delta":5,"oi_delta_value":1.2e6}],"low":[]}`))
 		default:
 			t.Fatalf("unexpected request %s?%s", r.URL.Path, r.URL.RawQuery)
 		}
@@ -179,6 +179,9 @@ func TestAttachPerCoinSignals_filtersToCandidates(t *testing.T) {
 	}
 	if g.Price == nil || len(g.Price) == 0 {
 		t.Fatalf("price not attached: %+v", g.Price)
+	}
+	if _, ok := e.PerCoinSignalFor("ETHUSDT"); ok {
+		t.Fatalf("non-candidate symbol ETHUSDT must be filtered out but was attached")
 	}
 }
 
@@ -217,11 +220,23 @@ func TestFormatPerCoinSignals_omitsMissing(t *testing.T) {
 	cfg.Indicators.EnableOIData = true
 	cfg.Indicators.EnableNetflowData = true
 	cfg.Indicators.EnablePriceData = true
+	cfg.Indicators.DataDurations = []string{"1h"}
 	e := NewStrategyEngine(&cfg)
+
+	// The shared maps are populated for a DIFFERENT symbol ("AAPL"); the
+	// queried symbol "CYSUSDT" has no OI/netflow/price rows of its own. Any
+	// empty section header emitted for CYSUSDT would fail this test.
+	e.SetPerCoinSignals(map[string]PerCoinSignal{
+		"AAPL": {
+			OI:      map[string]map[string]nofxos.OIPosition{"1h": {"top:AAPL": {Symbol: "AAPL", Rank: 1}}},
+			Netflow: map[string]map[string]nofxos.NetFlowPosition{"1h": {"top:AAPL": {Symbol: "AAPL", Rank: 1}}},
+			Price:   map[string]map[string]nofxos.PriceRankingItem{"1h": {"top:AAPL": {Symbol: "AAPL"}}},
+		},
+	})
 
 	out := e.formatPerCoinSignals("CYSUSDT", 1.3821)
 	if out != "" {
-		t.Fatalf("expected empty render for symbol with no data, got:\n%s", out)
+		t.Fatalf("expected empty render for symbol with no rows, got:\n%s", out)
 	}
 }
 

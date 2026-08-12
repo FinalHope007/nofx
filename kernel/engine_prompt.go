@@ -1007,49 +1007,61 @@ func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float6
 			sig.AI500.Score, sig.AI500.PeakScore, currentPrice, sig.AI500.StartPrice, sig.AI500.IncreasePercent))
 	}
 
-	if ind.EnableOIData && len(sig.OI) > 0 {
-		sb.WriteString(fmt.Sprintf("=== %s Open Interest ===\n", symbol))
+	if ind.EnableOIData {
+		var body strings.Builder
 		for _, dur := range e.durationOrder(ind.DataDurations) {
 			if m, ok := sig.OI[dur]; ok {
 				if p, ok := m["top:"+symbol]; ok {
-					sb.WriteString(e.formatOIListLine(dur, "Increase", p))
+					body.WriteString(e.formatOIListLine(dur, "Increase", p))
 				}
 				if p, ok := m["low:"+symbol]; ok {
-					sb.WriteString(e.formatOIListLine(dur, "Decrease", p))
+					body.WriteString(e.formatOIListLine(dur, "Decrease", p))
 				}
 			}
 		}
-		sb.WriteString("\n")
+		if body.Len() > 0 {
+			sb.WriteString(fmt.Sprintf("=== %s Open Interest ===\n", symbol))
+			sb.WriteString(body.String())
+			sb.WriteString("\n")
+		}
 	}
 
-	if ind.EnableNetflowData && len(sig.Netflow) > 0 {
-		sb.WriteString(fmt.Sprintf("=== %s Net Flow ===\n", symbol))
+	if ind.EnableNetflowData {
+		var body strings.Builder
 		for _, dur := range e.durationOrder(ind.DataDurations) {
 			if m, ok := sig.Netflow[dur]; ok {
 				if p, ok := m["top:"+symbol]; ok {
-					sb.WriteString(e.formatNetflowListLine(dur, "inflow", p))
+					body.WriteString(e.formatNetflowListLine(dur, "inflow", p))
 				}
 				if p, ok := m["low:"+symbol]; ok {
-					sb.WriteString(e.formatNetflowListLine(dur, "outflow", p))
+					body.WriteString(e.formatNetflowListLine(dur, "outflow", p))
 				}
 			}
 		}
-		sb.WriteString("\n")
+		if body.Len() > 0 {
+			sb.WriteString(fmt.Sprintf("=== %s Net Flow ===\n", symbol))
+			sb.WriteString(body.String())
+			sb.WriteString("\n")
+		}
 	}
 
-	if ind.EnablePriceData && len(sig.Price) > 0 {
-		sb.WriteString(fmt.Sprintf("=== %s Price Change ===\n", symbol))
+	if ind.EnablePriceData {
+		var body strings.Builder
 		for _, dur := range e.durationOrder(ind.DataDurations) {
 			if m, ok := sig.Price[dur]; ok {
 				if p, ok := m["top:"+symbol]; ok {
-					sb.WriteString(e.formatPriceListLine(dur, p))
+					body.WriteString(e.formatPriceListLine(dur, p))
 				}
 				if p, ok := m["low:"+symbol]; ok {
-					sb.WriteString(e.formatPriceListLine(dur, p))
+					body.WriteString(e.formatPriceListLine(dur, p))
 				}
 			}
 		}
-		sb.WriteString("\n")
+		if body.Len() > 0 {
+			sb.WriteString(fmt.Sprintf("=== %s Price Change ===\n", symbol))
+			sb.WriteString(body.String())
+			sb.WriteString("\n")
+		}
 	}
 
 	return sb.String()
