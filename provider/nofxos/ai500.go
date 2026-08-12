@@ -18,6 +18,7 @@ type CoinData struct {
 	MaxScore        float64 `json:"max_score"`        // Highest score
 	MaxPrice        float64 `json:"max_price"`        // Highest price
 	IncreasePercent float64 `json:"increase_percent"` // Increase percentage (already x100)
+	PeakScore       float64 `json:"peak_score"`       // Parsed peak score from signal display string
 	IsAvailable     bool    `json:"-"`                // Whether tradable (internal use)
 }
 

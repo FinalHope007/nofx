@@ -47,7 +47,7 @@ func (c *FreeTrendingClient) GetOILow(limit int) ([]OIPosition, error) {
 }
 
 func (c *FreeTrendingClient) getOIArray(which string, limit int) ([]OIPosition, error) {
-	raw, err := c.getTrending("oi", limit)
+	raw, err := c.getTrending("oi", "24h", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (c *FreeTrendingClient) GetNetFlowLow(limit int) ([]NetFlowPosition, error)
 }
 
 func (c *FreeTrendingClient) getNetFlowArray(which string, limit int) ([]NetFlowPosition, error) {
-	raw, err := c.getTrending("net_flow", limit)
+	raw, err := c.getTrending("net_flow", "24h", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (c *FreeTrendingClient) GetPriceLow(limit int) ([]PriceRankingItem, error) 
 }
 
 func (c *FreeTrendingClient) getPriceArray(which string, limit int) ([]PriceRankingItem, error) {
-	raw, err := c.getTrending("price", limit)
+	raw, err := c.getTrending("price", "24h", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -116,14 +116,74 @@ func (c *FreeTrendingClient) getPriceArray(which string, limit int) ([]PriceRank
 	return env.Top, nil
 }
 
-func (c *FreeTrendingClient) getTrending(tab string, limit int) (json.RawMessage, error) {
+func (c *FreeTrendingClient) getTrending(tab, duration string, limit int) (json.RawMessage, error) {
 	params := url.Values{}
 	params.Set("tab", tab)
-	params.Set("duration", "24h")
+	if duration == "" {
+		duration = "24h"
+	}
+	params.Set("duration", duration)
 	if limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", limit))
 	}
 	return c.get(c.trendingPath(params))
+}
+
+// OIDataEnvelope holds the raw top/low per-list OI data for a duration.
+type OIDataEnvelope struct {
+	Top []OIPosition `json:"top"`
+	Low []OIPosition `json:"low"`
+}
+
+// NetflowEnvelope holds the raw top/low per-list netflow data for a duration.
+type NetflowEnvelope struct {
+	Top []NetFlowPosition `json:"top"`
+	Low []NetFlowPosition `json:"low"`
+}
+
+// PriceEnvelope holds the raw top/low per-list price ranking data for a duration.
+type PriceEnvelope struct {
+	Top []PriceRankingItem `json:"top"`
+	Low []PriceRankingItem `json:"low"`
+}
+
+// GetOIData returns the full top/low OI envelope for a given duration.
+func (c *FreeTrendingClient) GetOIData(duration string, limit int) (*OIDataEnvelope, error) {
+	raw, err := c.getTrending("oi", duration, limit)
+	if err != nil {
+		return nil, err
+	}
+	var env OIDataEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("parse trending oi: %w", err)
+	}
+	return &env, nil
+}
+
+// GetNetflowData returns the full top/low netflow envelope for a given duration.
+func (c *FreeTrendingClient) GetNetflowData(duration string, limit int) (*NetflowEnvelope, error) {
+	raw, err := c.getTrending("net_flow", duration, limit)
+	if err != nil {
+		return nil, err
+	}
+	var env NetflowEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("parse trending net_flow: %w", err)
+	}
+	return &env, nil
+}
+
+// GetPriceData returns the full top/low price ranking envelope for a given duration.
+func (c *FreeTrendingClient) GetPriceData(duration string, limit int) (*PriceEnvelope, error) {
+	raw, err := c.getTrending("price", duration, limit)
+	if err != nil {
+		return nil, err
+	}
+	var env PriceEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("parse trending price: %w", err)
+	}
+	return &env, nil
 }
 
 func (c *FreeTrendingClient) GetAI500() ([]CoinData, error) {
@@ -143,6 +203,7 @@ func (c *FreeTrendingClient) GetAI500() ([]CoinData, error) {
 				StartTime      int64   `json:"startTime"`
 				StartPrice     float64 `json:"startPrice"`
 				ChangePctValue float64 `json:"changePctValue"`
+				Signal         string  `json:"signal"`
 			} `json:"assets"`
 		} `json:"category"`
 	}
@@ -159,8 +220,22 @@ func (c *FreeTrendingClient) GetAI500() ([]CoinData, error) {
 			IncreasePercent: a.ChangePctValue,
 			IsAvailable:     true,
 		})
+		coins[len(coins)-1].PeakScore = parsePeakScore(a.Signal)
 	}
 	return coins, nil
+}
+
+// parsePeakScore extracts the numeric peak score from a signal display string
+// (e.g. "Peak 87"), returning 0 when no "Peak" marker is present.
+func parsePeakScore(signal string) float64 {
+	i := strings.LastIndex(signal, "Peak")
+	if i < 0 {
+		return 0
+	}
+	var v float64
+	rest := strings.TrimSpace(signal[i+4:])
+	fmt.Sscanf(rest, "%f", &v)
+	return v
 }
 
 func (c *FreeTrendingClient) trendingPath(params url.Values) string {

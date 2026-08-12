@@ -36,6 +36,75 @@ func TestEngine_getOITopCoins_usesFree(t *testing.T) {
 	}
 }
 
+func TestFreeTrending_GetOIData_duration(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("duration") != "1h" {
+			t.Fatalf("duration=%q want 1h", r.URL.Query().Get("duration"))
+		}
+		w.Write([]byte(`{"top":[{"symbol":"BTC","rank":1,"current_oi":1,"oi_delta":1,"oi_delta_percent":1,"oi_delta_value":1,"price_delta_percent":1,"net_long":1,"net_short":1}],"low":[]}`))
+	}))
+	defer srv.Close()
+	tr := nofxos.NewFreeTrendingClient()
+	tr.SetBaseURL(srv.URL)
+	env, err := tr.GetOIData("1h", 50)
+	if err != nil {
+		t.Fatalf("GetOIData: %v", err)
+	}
+	if len(env.Top) != 1 || len(env.Low) != 0 {
+		t.Fatalf("unexpected %+v", env)
+	}
+	if env.Top[0].OIDeltaPercent != 1 {
+		t.Fatalf("oi_delta_percent not parsed: %+v", env.Top[0])
+	}
+}
+
+func TestFreeTrending_GetNetflowData_duration(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("duration") != "1h" {
+			t.Fatalf("duration=%q want 1h", r.URL.Query().Get("duration"))
+		}
+		w.Write([]byte(`{"top":[{"amount":29309691.4,"price":64119.7,"price_delta_percent":0.2316,"rank":1,"symbol":"BTCUSDT"}],"low":[]}`))
+	}))
+	defer srv.Close()
+	tr := nofxos.NewFreeTrendingClient()
+	tr.SetBaseURL(srv.URL)
+	env, err := tr.GetNetflowData("1h", 50)
+	if err != nil {
+		t.Fatalf("GetNetflowData: %v", err)
+	}
+	if len(env.Top) != 1 || len(env.Low) != 0 {
+		t.Fatalf("unexpected %+v", env)
+	}
+	if env.Top[0].Symbol != "BTCUSDT" || env.Top[0].Amount != 29309691.4 {
+		t.Fatalf("net_flow not parsed: %+v", env.Top[0])
+	}
+}
+
+func TestFreeTrending_GetPriceData_duration(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("duration") != "1h" {
+			t.Fatalf("duration=%q want 1h", r.URL.Query().Get("duration"))
+		}
+		w.Write([]byte(`{"top":[{"pair":"RAREUSDT","symbol":"RARE","price_delta":0.2465,"price":0.0153,"future_flow":2199.0,"spot_flow":139489.6,"oi":113026194,"oi_delta":37235516,"oi_delta_value":915909.5}],"low":[]}`))
+	}))
+	defer srv.Close()
+	tr := nofxos.NewFreeTrendingClient()
+	tr.SetBaseURL(srv.URL)
+	env, err := tr.GetPriceData("1h", 50)
+	if err != nil {
+		t.Fatalf("GetPriceData: %v", err)
+	}
+	if len(env.Top) != 1 || len(env.Low) != 0 {
+		t.Fatalf("unexpected %+v", env)
+	}
+	if env.Top[0].Pair != "RAREUSDT" || env.Top[0].PriceDelta != 0.2465 {
+		t.Fatalf("price not parsed: %+v", env.Top[0])
+	}
+}
+
 func TestEngine_getVergexSignalCoins_usesFreeLeaderboard(t *testing.T) {
 	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
