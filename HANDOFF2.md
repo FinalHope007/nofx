@@ -47,3 +47,22 @@
 - `ALLOW_LOCAL_CUSTOM_API=1` is used in tests to bypass SSRF for httptest loopback.
 - Free `vergex.trade` endpoints: `/trending-crypto?tab=oi|net_flow|price`, `/trending-category?lang=en&key=ai500` (see `paidsource-research.md`).
 - AI calls go through local Bifrost gateway (custom provider); `.env` holds `JWT_SECRET` etc.
+
+## Decisions (recorded 2026-08-12)
+
+- Configurability focus is **Section A, B, C, D only** (global hard caps, throttle,
+  decision validator, risk-control execution). Sections E/F/G/H are out of scope
+  for surfacing to the frontend for now.
+- Two goals agreed:
+  1. **Reconcile conflicting pairs** into single config-backed fields used
+     consistently by both the decision validator and the runtime. The full set of
+     conflicting pairs is tabulated in `Trading Parameters.md` §I.
+  2. **Surface the chosen Section A/B/C/D parameters in the frontend.**
+- The **exact list of fields/parameters to surface** in each section is NOT yet
+  decided — the next session LLM and the user will finalize this together before
+  writing the implementation plan.
+- Design intent: for personal use; user accepts risk of changing hard/dangerous
+  parameters. Not all parameters will be surfaced (curated subset).
+- A likely implementation anchor: reintroduce throttle + validator hardcoded
+  values as config fields (see reverted commits `434301cb` then `574ddfb1` on
+  `trader/auto_trader_throttle.go`).

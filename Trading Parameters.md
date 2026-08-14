@@ -108,3 +108,27 @@
 | `min_confidence` | "≥78" in prompt; **no code check** on decision.Confidence |
 | `min_risk_reward_ratio` | in prompt; actual block is hardcoded `≥3.0` in `engine_position.go:126` |
 | `trading_frequency` prompt section | prompt text only |
+
+## I. Conflicting / Duplicated Parameters (must reconcile)
+
+These are cases where more than one parameter governs the same concept, and one
+enforcement ignores or shadows the configurable field. Before exposing any of
+these to the frontend, they must be unified into a single config-backed source
+of truth used by BOTH the decision validator (`kernel/engine_position.go`) and
+the runtime (`trader/auto_trader_risk.go` / `trader/auto_trader_throttle.go`).
+
+| Concept | Config field (clamp, default) | Other/hardcoded enforcement | Where the config field is ignored/shadowed | Effective behavior today |
+|---|---|---|---|---|
+| Min position size (general) | `min_position_size` (10–1000; runtime default 12) | `minPositionSizeGeneral = 12` — validator, `engine_position.go:66` | validator ignores `min_position_size` | config < 12 has no effect; validator rejects |
+| Min position size (BTC/ETH) | `min_position_size` (same field) | `minPositionSizeBTCETH = 60` — validator, `engine_position.go:67` | validator hardcodes 60 for BTC/ETH, ignores config | BTC/ETH floor is always 60 regardless of config |
+| Risk/reward floor | `min_risk_reward_ratio` (1.0–10.0; prompt-only) | `≥ 3.0` hardcoded — validator, `engine_position.go:126` | validator ignores config | cannot be lowered below 3.0 via config |
+| Max margin usage | `max_margin_usage` (0.1–1.0; prompt-only) | margin math `marginOverheadFactor = 1.01`, `takerFeeRate = 0.001` — `auto_trader_orders.go:17-18` | config not read as a gate | config is cosmetic; real cap from margin math |
+| Min confidence | `min_confidence` (50–100; prompt-only) | no code check on `decision.Confidence` | nothing reads it | config is cosmetic (prompt only) |
+| Max concurrent positions (held) | `max_positions` (1–8; default 3) | `MaxPositions = 8` const — `store/strategy.go:16` (clamp ceiling) | distinct from open-rate throttle | max held = min(config, 8); default 3 |
+| Max new opens (rate) | — (no config) | `autopilotMaxOpensPerCycle = 2`, `autopilotMaxOpensPerHour = 3` — throttle | throttle hardcoded; separate from held cap | new opens rate-limited regardless of max_positions |
+| Leverage (tiered) | `btc_eth_max_leverage` / `altcoin_max_leverage` (1–20) | `MaxBTCETHLeverage = 20` / `MaxAltLeverage = 20` — clamp | consistent between validator + runtime; only clamp applies | cannot exceed 20 |
+
+**Reconcile rule:** each concept should have ONE config field that both the
+validator and the runtime read. Remove the hardcoded shadow values (12 / 60 /
+3.0 / margin math) or make them fall back to config when the config field is
+set.
