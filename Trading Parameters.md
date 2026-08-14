@@ -9,31 +9,36 @@
 
 ## A. Global hard caps (config clamped to these bounds) — `store/strategy.go:15-33`
 
-| Gate | Enforced value | File:line | Scope | Config now? |
-|---|---|---|---|---|
-| Candidate universe cap | `MaxCandidateCoins = 10` | strategy.go:15, clamp 40-56 | all | limit fields, hard-capped 10 |
-| Max concurrent positions | `MaxPositions = 8` | strategy.go:16, clamp 96-102 | all | yes `max_positions` |
-| Max timeframes / kline count | `MaxTimeframes=4`, `MinKlineCount=10`, `MaxKlineCount=30` | strategy.go:18-19, 59-73 | all | `selected_timeframes`/`primary_count` |
-| Leverage bounds | `1 ≤ lev ≤ 20` (BTC/ETH & alt) | strategy.go:20-22, 105-116 | all | yes `btc_eth_max_leverage`, `altcoin_max_leverage` |
-| Position-value ratio bounds | `0.5 ≤ ratio ≤ 10.0` | strategy.go:23-24, 119-130 | all | yes `*_max_position_value_ratio` |
-| Risk-reward bounds | `1.0 ≤ rr ≤ 10.0` | strategy.go:25-26, 133-138 | all | yes `min_risk_reward_ratio` |
-| Margin-usage bounds | `0.1 ≤ margin ≤ 1.0` | strategy.go:27-28, 139-144 | all | yes `max_margin_usage` |
-| Position-size bounds | `10 ≤ size ≤ 1000` | strategy.go:29-30 | all | yes `min_position_size` |
-| Confidence bounds | `50 ≤ conf ≤ 100` | strategy.go:31-32 | all | yes `min_confidence` |
+| Gate | Enforced value | File:line | Scope | Config now? | Frontend |
+|---|---|---|---|---|---|
+| Candidate universe cap | `MaxCandidateCoins = 10` | strategy.go:15, clamp 40-56 | all | limit fields, hard-capped 10 | No |
+| Max concurrent positions | `MaxPositions = 8` | strategy.go:16, clamp 96-102 | all | yes `max_positions` | Yes |
+| Max timeframes / kline count | `MaxTimeframes=4`, `MinKlineCount=10`, `MaxKlineCount=30` | strategy.go:18-19, 59-73 | all | `selected_timeframes`/`primary_count` | No |
+| Leverage bounds | `1 ≤ lev ≤ 20` (BTC/ETH & alt) | strategy.go:20-22, 105-116 | all | yes `btc_eth_max_leverage`, `altcoin_max_leverage` | Yes, already surfaced |
+| Position-value ratio bounds | `0.5 ≤ ratio ≤ 10.0` | strategy.go:23-24, 119-130 | all | yes `*_max_position_value_ratio` | Yes, already surfaced |
+| Risk-reward bounds | `1.0 ≤ rr ≤ 10.0` | strategy.go:25-26, 133-138 | all | yes `min_risk_reward_ratio` | Yes |
+| Margin-usage bounds | `0.1 ≤ margin ≤ 1.0` | strategy.go:27-28, 139-144 | all | yes `max_margin_usage` | Yes |
+| Position-size bounds | `10 ≤ size ≤ 1000` | strategy.go:29-30 | all | yes `min_position_size` | Yes |
+| Confidence bounds | `50 ≤ conf ≤ 100` | strategy.go:31-32 | all | yes `min_confidence` | Yes |
 
 ## B. Anti-churn throttle (all hardcoded) — `auto_trader_throttle.go:12-30`, enforced `auto_trader_loop.go:318`
 
-| Gate | Value | Enforced at | Scope | Config now? |
-|---|---|---|---|---|
-| Opens per hour cap | `autopilotMaxOpensPerHour = 3` | open | autopilot | no |
-| Opens per cycle cap | `autopilotMaxOpensPerCycle = 2` | open | autopilot | no |
-| Min hold before normal close | `autopilotMinHoldDuration = 90m` | close | autopilot | no |
-| Noise-band close window | `autopilotNoiseCloseHoldDuration = 3h` (band −2%..+3%) | close | autopilot | no |
-| Re-entry cooldown | `autopilotReentryCooldown = 4h` | open | autopilot | no |
-| SL/TP bypass floors | `earlyCloseStopLossBypass=−3%`, `earlyCloseTakeProfitBypass=+8%` | close | autopilot | no |
-| Noise band | `noiseCloseLossFloor=−2%`, `noiseCloseProfitCeiling=+3%` | close | autopilot | no |
+| Gate | Value | Enforced at | Scope | Config now? | Frontend |
+|---|---|---|---|---|---|
+| Opens per hour cap | `autopilotMaxOpensPerHour = 3` | open | autopilot | no | Yes |
+| Opens per cycle cap | `autopilotMaxOpensPerCycle = 2` | open | autopilot | no | Yes |
+| Min hold before normal close | `autopilotMinHoldDuration = 90m` | close | autopilot | no | Yes |
+| Noise-band close window | `autopilotNoiseCloseHoldDuration = 3h` (band −2%..+3%) | close | autopilot | no | Yes |
+| Re-entry cooldown | `autopilotReentryCooldown = 4h` | open | autopilot | no | Yes |
+| SL/TP bypass floors | `earlyCloseStopLossBypass=−3%`, `earlyCloseTakeProfitBypass=+8%` | close | autopilot | no | Yes |
+| Noise band | `noiseCloseLossFloor=−2%`, `noiseCloseProfitCeiling=+3%` | close | autopilot | no | Yes |
 
 > Tuned by replay and hardcoded; commit `574ddfb1` reverted per-strategy configurability.
+
+**Two hold-duration gates (staircase, both PRICE-MOVE basis):**
+- `autopilotMinHoldDuration` (90m) = FIRST gate: block close before 90m unless price ≤ `-3%` or ≥ `+8%` (stop-loss / take-profit bypass).
+- `autopilotNoiseCloseHoldDuration` (3h) = SECOND gate: between 90m and 3h, a flat close (price within `-2%..+3%`) is still blocked; allowed only after 3h or once price leaves the noise band.
+- Thresholds compare **unleveraged price move**, not ROI. `pricePnL = ROI / leverage` (when leverage > 1), so at 3x a −6% ROI reads as `-2%` price PnL — the UI/AI see ROI, the gate reasons in price move (confusing; see HANDOFF2.md).
 
 ## C. Decision validator (hardcoded, before orders) — `kernel/engine_position.go` (via `engine_analysis.go:431`)
 

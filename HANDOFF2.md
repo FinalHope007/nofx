@@ -66,3 +66,43 @@
 - A likely implementation anchor: reintroduce throttle + validator hardcoded
   values as config fields (see reverted commits `434301cb` then `574ddfb1` on
   `trader/auto_trader_throttle.go`).
+
+## Throttle bugs & semantics (recorded 2026-08-14)
+
+### Issue 1 — Open-rate counting bug (false "5 open orders")
+- Trigger: `openThrottleReason` -> `countRecentOpenOrders`
+  (`trader/auto_trader_throttle.go:233-249`). It counts EVERY `trader_orders`
+  row with an `open_` action, WITHOUT grouping by position/symbol.
+- Evidence: a single BTWUSDT long was opened as 5 separate Binance market
+  fills (order ids 33-37, distinct `exchange_order_id` 137993288..137993292,
+  all same timestamp 11:44:45 UTC) -> counted as 5 "opens", tripping
+  `autopilotMaxOpensPerHour = 3` at CYCLE 21 (log line 5043).
+- Result: false-positive open-rate block; user did NOT actually open 5 positions.
+- Fix direction: count DISTINCT position-open events (group by symbol, or by
+  logical order group) instead of raw order rows. Also `findRecentCloseOrder`
+  (re-entry cooldown) should treat multi-fill closes as one close.
+
+### Issue 2 — DB `leverage` mismatch (stored 1 vs live 3x)
+- `store/position_builder.go:71` hardcodes `Leverage: 1` on sync-created
+  position rows. The throttle does NOT use the DB row; it uses the LIVE
+  exchange position from `buildTradingContext` (`trader/auto_trader_loop.go:522-530`).
+- Consequence: stored position rows show leverage 1 even when the real
+  position is 3x/5x; any code reading leverage from the DB row gets the wrong
+  value.
+- Observed: CYCLE 34 APR held at live 3x (log: "leverage changed to 3x",
+  23:35), ROI ~-6%, but throttle reported "price PnL -1.93%" (= ROI/3). DB row
+  showed leverage=1 (wrong).
+
+### Semantics: price PnL vs ROI, and the two hold durations
+- Throttle thresholds are PRICE-MOVE (leverage-independent) percentages.
+  `positionPricePnLPct = UnrealizedPnLPct / leverage` (only if leverage > 1).
+  So at 3x, ROI -6% == price -2% == "price PnL -1.93%". The UI/AI see ROI;
+  the gate reasons in price move. This mismatch is confusing (see CYCLE 34).
+- `autopilotMinHoldDuration` (90m) = FIRST gate: block close before 90m unless
+  price <= -3% or >= +8% (stop-loss / take-profit bypass).
+- `autopilotNoiseCloseHoldDuration` (3h) = SECOND gate: between 90m and 3h, a
+  flat close (price within -2%..+3%) is still blocked; only after 3h (or PnL
+  leaves the noise band) is a flat close allowed. This message appears only for
+  positions held 90m-3h AND roughly flat (hence rarely seen; the common block
+  is the first-gate "min AI-managed hold is 1h30m" message).
+- Both are hardcoded (Section B) and candidates for configurability.
