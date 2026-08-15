@@ -181,7 +181,7 @@ export function EditorStepPage() {
         enableRsi,
         enableOi,
         enableFundingRate,
-        maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
+        maxPositions: 2, minPositionSize: 12, minRiskRewardRatio: 3.0,
         maxMarginUsage: 1.0, minConfidence: 78,
         enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
         maxOpensPerHour: 3, maxOpensPerCycle: 2,
