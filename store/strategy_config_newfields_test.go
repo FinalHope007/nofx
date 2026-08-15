@@ -43,3 +43,52 @@ func TestThrottlingConfigClamping(t *testing.T) {
 		t.Fatalf("expected early_close_stop_loss_bypass_pct clamped to <=0, got %f", cfg.RiskControl.Throttling.EarlyCloseStopLossBypassPct)
 	}
 }
+
+func TestThrottlingPercentageZeroRoundTripsToDefault(t *testing.T) {
+	// A persisted value of exactly 0 for a bypass/floor gate means "unset" and
+	// must round-trip to the enforced default after ClampLimits, not stay 0
+	// (store and runtime must agree).
+	cfg := GetDefaultStrategyConfig("en")
+	th := &cfg.RiskControl.Throttling
+	th.EarlyCloseStopLossBypassPct = 0
+	th.EarlyCloseTakeProfitBypassPct = 0
+	th.NoiseCloseLossFloorPct = 0
+	th.NoiseCloseProfitCeilingPct = 0
+	cfg.ClampLimits()
+
+	if got := th.EarlyCloseStopLossBypassPct; got != -3.0 {
+		t.Fatalf("expected early_close_stop_loss_bypass_pct -3.0, got %f", got)
+	}
+	if got := th.EarlyCloseTakeProfitBypassPct; got != 8.0 {
+		t.Fatalf("expected early_close_take_profit_bypass_pct 8.0, got %f", got)
+	}
+	if got := th.NoiseCloseLossFloorPct; got != -2.0 {
+		t.Fatalf("expected noise_close_loss_floor_pct -2.0, got %f", got)
+	}
+	if got := th.NoiseCloseProfitCeilingPct; got != 3.0 {
+		t.Fatalf("expected noise_close_profit_ceiling_pct 3.0, got %f", got)
+	}
+}
+
+func TestThrottlingPercentageWrongSignResetsToDefault(t *testing.T) {
+	cfg := GetDefaultStrategyConfig("en")
+	th := &cfg.RiskControl.Throttling
+	th.EarlyCloseStopLossBypassPct = 5    // wrong sign (loss gate)
+	th.NoiseCloseLossFloorPct = 10        // wrong sign (loss gate)
+	th.EarlyCloseTakeProfitBypassPct = -1 // wrong sign (profit gate)
+	th.NoiseCloseProfitCeilingPct = -9    // wrong sign (profit gate)
+	cfg.ClampLimits()
+
+	if got := th.EarlyCloseStopLossBypassPct; got != -3.0 {
+		t.Fatalf("expected early_close_stop_loss_bypass_pct -3.0, got %f", got)
+	}
+	if got := th.NoiseCloseLossFloorPct; got != -2.0 {
+		t.Fatalf("expected noise_close_loss_floor_pct -2.0, got %f", got)
+	}
+	if got := th.EarlyCloseTakeProfitBypassPct; got != 8.0 {
+		t.Fatalf("expected early_close_take_profit_bypass_pct 8.0, got %f", got)
+	}
+	if got := th.NoiseCloseProfitCeilingPct; got != 3.0 {
+		t.Fatalf("expected noise_close_profit_ceiling_pct 3.0, got %f", got)
+	}
+}

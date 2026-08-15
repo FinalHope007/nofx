@@ -56,18 +56,9 @@ func withThrottlingDefaults(t store.ThrottlingConfig) store.ThrottlingConfig {
 	if t.ReentryCooldownMin <= 0 {
 		t.ReentryCooldownMin = d.ReentryCooldownMin
 	}
-	if t.EarlyCloseStopLossBypassPct == 0 {
-		t.EarlyCloseStopLossBypassPct = d.EarlyCloseStopLossBypassPct
-	}
-	if t.EarlyCloseTakeProfitBypassPct == 0 {
-		t.EarlyCloseTakeProfitBypassPct = d.EarlyCloseTakeProfitBypassPct
-	}
-	if t.NoiseCloseLossFloorPct == 0 {
-		t.NoiseCloseLossFloorPct = d.NoiseCloseLossFloorPct
-	}
-	if t.NoiseCloseProfitCeilingPct == 0 {
-		t.NoiseCloseProfitCeilingPct = d.NoiseCloseProfitCeilingPct
-	}
+	// The four percentage gates share store.NormalizeThrottlingPercentageDefaults
+	// as the single source of truth, so persisted == enforced.
+	store.NormalizeThrottlingPercentageDefaults(&t)
 	return t
 }
 

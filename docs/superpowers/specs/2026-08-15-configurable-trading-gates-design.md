@@ -52,7 +52,7 @@ Also in scope: fix the open-rate counting bug (HANDOFF2 "Issue 1"). The DB-lever
 ### Basic Rules (Section A additions — current editor only shows leverage + ratios)
 | Field | Label | Clamp | Default |
 |---|---|---|---|
-| `max_positions` | Max concurrent positions | 1–8 | 3 |
+| `max_positions` | Max concurrent positions | 1–8 | 2 |
 | `min_position_size` | Min position size (USDT) | 10–1000 | 12 |
 
 ### Advanced Settings (Section A additions + OI)
@@ -83,7 +83,7 @@ Also in scope: fix the open-rate counting bug (HANDOFF2 "Issue 1"). The DB-lever
 
 | Field | Default | Scalp | Intraday | Swing |
 |---|---|---|---|---|
-| `max_positions` | 3 | 5 | 4 | 2 |
+| `max_positions` | 2 | 5 | 4 | 2 |
 | `max_opens_per_hour` | 3 | 8 | 5 | 2 |
 | `max_opens_per_cycle` | 2 | 4 | 3 | 1 |
 | `min_hold_duration_min` | 90 | 10 | 45 | 360 |

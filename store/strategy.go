@@ -163,7 +163,8 @@ func (c *StrategyConfig) ClampLimits() {
 	}
 
 	// Clamp throttle gates. Zero/negative durations and opens caps fall back to
-	// the historical hardcoded values (Section B defaults).
+	// the historical hardcoded values (Section B defaults). The four percentage
+	// gates share the persisted==enforced rule via the normalizing helper.
 	t := &c.RiskControl.Throttling
 	if t.MaxOpensPerHour < 1 || t.MaxOpensPerHour > 100 {
 		t.MaxOpensPerHour = 3
@@ -180,17 +181,43 @@ func (c *StrategyConfig) ClampLimits() {
 	if t.ReentryCooldownMin < 1 || t.ReentryCooldownMin > 10080 {
 		t.ReentryCooldownMin = 240
 	}
-	if t.EarlyCloseStopLossBypassPct > 0 {
-		t.EarlyCloseStopLossBypassPct = -3.0
+	NormalizeThrottlingPercentageDefaults(t)
+}
+
+// defaultThrottlingPercentageGates returns the historical Section B defaults for
+// the four percentage throttle gates. Loss/floor gates are negative; the
+// profit/ceiling gates are positive.
+func defaultThrottlingPercentageGates() ThrottlingConfig {
+	return ThrottlingConfig{
+		EarlyCloseStopLossBypassPct:   -3.0,
+		EarlyCloseTakeProfitBypassPct: 8.0,
+		NoiseCloseLossFloorPct:        -2.0,
+		NoiseCloseProfitCeilingPct:    3.0,
 	}
-	if t.EarlyCloseTakeProfitBypassPct < 0 {
-		t.EarlyCloseTakeProfitBypassPct = 8.0
+}
+
+// NormalizeThrottlingPercentageDefaults enforces the single persisted==enforced
+// rule for the four percentage throttle gates: a value of exactly 0 means
+// "unset" and is filled with the historical default; a value with the wrong sign
+// (positive for a loss/floor gate, negative for a profit/ceiling gate) is also
+// reset to the default. This is the single source of truth shared by both the
+// store (ClampLimits) and the runtime fallback (trader/auto_trader_throttle.go).
+func NormalizeThrottlingPercentageDefaults(t *ThrottlingConfig) {
+	if t == nil {
+		return
 	}
-	if t.NoiseCloseLossFloorPct > 0 {
-		t.NoiseCloseLossFloorPct = -2.0
+	d := defaultThrottlingPercentageGates()
+	if t.EarlyCloseStopLossBypassPct >= 0 {
+		t.EarlyCloseStopLossBypassPct = d.EarlyCloseStopLossBypassPct
 	}
-	if t.NoiseCloseProfitCeilingPct < 0 {
-		t.NoiseCloseProfitCeilingPct = 3.0
+	if t.NoiseCloseLossFloorPct >= 0 {
+		t.NoiseCloseLossFloorPct = d.NoiseCloseLossFloorPct
+	}
+	if t.EarlyCloseTakeProfitBypassPct <= 0 {
+		t.EarlyCloseTakeProfitBypassPct = d.EarlyCloseTakeProfitBypassPct
+	}
+	if t.NoiseCloseProfitCeilingPct <= 0 {
+		t.NoiseCloseProfitCeilingPct = d.NoiseCloseProfitCeilingPct
 	}
 }
 

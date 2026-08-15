@@ -230,7 +230,7 @@ export function defaultRiskControl(input?: {
   noiseCloseProfitCeilingPct?: number
 }): RiskControlConfig {
   return {
-    max_positions: clamp(input?.maxPositions ?? 2, 1, 20),
+    max_positions: clamp(input?.maxPositions ?? 2, 1, 8),
     btc_eth_max_leverage: clamp(input?.btcEthMaxLeverage ?? 5, 1, 20),
     altcoin_max_leverage: clamp(input?.altcoinMaxLeverage ?? 5, 1, 20),
     btc_eth_max_position_value_ratio: clamp(
