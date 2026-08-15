@@ -12,6 +12,7 @@ nofx-auto
 *.exe
 nofx
 nofx_test
+nofx-arm64
 
 # Go 相关
 *.test
