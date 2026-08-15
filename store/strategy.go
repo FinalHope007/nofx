@@ -154,6 +154,44 @@ func (c *StrategyConfig) ClampLimits() {
 	if c.RiskControl.MinConfidence > MaxConfidence {
 		c.RiskControl.MinConfidence = MaxConfidence
 	}
+
+	// Clamp OI-liquidity filter. When unset (both fields zero), fall back to the
+	// historical default of enabled with a 15M USDT OI floor.
+	if c.RiskControl.OILiquidityFilterMinUSDT <= 0 {
+		c.RiskControl.EnableOILiquidityFilter = true
+		c.RiskControl.OILiquidityFilterMinUSDT = 15000000
+	}
+
+	// Clamp throttle gates. Zero/negative durations and opens caps fall back to
+	// the historical hardcoded values (Section B defaults).
+	t := &c.RiskControl.Throttling
+	if t.MaxOpensPerHour < 1 || t.MaxOpensPerHour > 100 {
+		t.MaxOpensPerHour = 3
+	}
+	if t.MaxOpensPerCycle < 1 || t.MaxOpensPerCycle > t.MaxOpensPerHour {
+		t.MaxOpensPerCycle = 2
+	}
+	if t.MinHoldDurationMin < 1 || t.MinHoldDurationMin > 10080 {
+		t.MinHoldDurationMin = 90
+	}
+	if t.NoiseCloseHoldDurationMin < t.MinHoldDurationMin || t.NoiseCloseHoldDurationMin > 10080 {
+		t.NoiseCloseHoldDurationMin = 180
+	}
+	if t.ReentryCooldownMin < 1 || t.ReentryCooldownMin > 10080 {
+		t.ReentryCooldownMin = 240
+	}
+	if t.EarlyCloseStopLossBypassPct > 0 {
+		t.EarlyCloseStopLossBypassPct = -3.0
+	}
+	if t.EarlyCloseTakeProfitBypassPct < 0 {
+		t.EarlyCloseTakeProfitBypassPct = 8.0
+	}
+	if t.NoiseCloseLossFloorPct > 0 {
+		t.NoiseCloseLossFloorPct = -2.0
+	}
+	if t.NoiseCloseProfitCeilingPct < 0 {
+		t.NoiseCloseProfitCeilingPct = 3.0
+	}
 }
 
 // NormalizeProductSchema keeps saved strategy JSON aligned with the product
@@ -687,6 +725,9 @@ type StrategyConfig struct {
 	// language setting: "zh" for Chinese, "en" for English
 	// This determines the language used for data formatting and prompt generation
 	Language string `json:"language,omitempty"`
+	// Trading style preset: "scalp" | "intraday" | "swing" | "default". Saved for
+	// record and UI highlight; does NOT drive runtime logic.
+	TradingStyle string `json:"trading_style,omitempty"`
 	// AI trading configuration fields are kept on the Go struct for engine
 	// compatibility, but JSON persistence nests them under ai_config.
 	CoinSource     CoinSourceConfig     `json:"-"`
@@ -991,6 +1032,20 @@ type ExternalDataSource struct {
 	RefreshSecs int               `json:"refresh_secs,omitempty"` // refresh interval (seconds)
 }
 
+// ThrottlingConfig anti-churn throttle gates (Section B). All durations are
+// integer minutes. Percentages are PRICE-move, leverage-independent.
+type ThrottlingConfig struct {
+	MaxOpensPerHour               int     `json:"max_opens_per_hour"`
+	MaxOpensPerCycle              int     `json:"max_opens_per_cycle"`
+	MinHoldDurationMin            int     `json:"min_hold_duration_min"`
+	NoiseCloseHoldDurationMin     int     `json:"noise_close_hold_duration_min"`
+	ReentryCooldownMin            int     `json:"reentry_cooldown_min"`
+	EarlyCloseStopLossBypassPct   float64 `json:"early_close_stop_loss_bypass_pct"`
+	EarlyCloseTakeProfitBypassPct float64 `json:"early_close_take_profit_bypass_pct"`
+	NoiseCloseLossFloorPct        float64 `json:"noise_close_loss_floor_pct"`
+	NoiseCloseProfitCeilingPct    float64 `json:"noise_close_profit_ceiling_pct"`
+}
+
 // RiskControlConfig risk control configuration
 type RiskControlConfig struct {
 	// Max number of coins held simultaneously (CODE ENFORCED)
@@ -1015,6 +1070,13 @@ type RiskControlConfig struct {
 	MinRiskRewardRatio float64 `json:"min_risk_reward_ratio"`
 	// Min AI confidence to open position (AI guided)
 	MinConfidence int `json:"min_confidence"`
+
+	// OI-liquidity candidate filter (Section D). When EnableOILiquidityFilter is
+	// true, candidates with OI value below OILiquidityFilterMinUSDT are dropped.
+	EnableOILiquidityFilter  bool    `json:"enable_oi_liquidity_filter"`
+	OILiquidityFilterMinUSDT float64 `json:"oi_liquidity_filter_min_usdt"`
+	// Anti-churn throttle gates (Section B).
+	Throttling ThrottlingConfig `json:"throttling"`
 }
 
 // NewStrategyStore creates a new StrategyStore
