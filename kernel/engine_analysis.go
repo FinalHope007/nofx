@@ -318,6 +318,19 @@ func priceListsToMap(top, low []nofxos.PriceRankingItem, symSet map[string]bool)
 	return m
 }
 
+// keepCoinByOILiquidity decides whether a candidate coin passes the OI-liquidity
+// filter. Existing positions and XYZ (non-perp) assets are always kept, matching
+// prior behavior. When the filter is disabled the coin is kept.
+func keepCoinByOILiquidity(isExistingPosition, isXyzAsset bool, oiValue float64, enable bool, minThresholdUSDT float64) bool {
+	if isExistingPosition || isXyzAsset || !enable {
+		return true
+	}
+	if oiValue <= 0 {
+		return false
+	}
+	return oiValue >= minThresholdUSDT
+}
+
 // ============================================================================
 // Market Data Fetching
 // ============================================================================
@@ -367,7 +380,12 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 		positionSymbols[pos.Symbol] = true
 	}
 
-	const minOIThresholdMillions = 15.0 // 15M USD minimum open interest value
+	riskCfg := engine.GetRiskControlConfig()
+	enableOIFilter := riskCfg.EnableOILiquidityFilter
+	minOITHRESHOLDUSDT := riskCfg.OILiquidityFilterMinUSDT
+	if minOITHRESHOLDUSDT <= 0 {
+		minOITHRESHOLDUSDT = 15_000_000 // preserve historical default
+	}
 
 	for _, coin := range ctx.CandidateCoins {
 		if _, exists := ctx.MarketDataMap[coin.Symbol]; exists {
@@ -383,12 +401,11 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 		// Liquidity filter (skip for xyz dex assets - they don't have OI data from Binance)
 		isExistingPosition := positionSymbols[coin.Symbol]
 		isXyzAsset := market.IsXyzDexAsset(coin.Symbol)
-		if !isExistingPosition && !isXyzAsset && data.OpenInterest != nil && data.CurrentPrice > 0 {
+		if data.OpenInterest != nil && data.CurrentPrice > 0 {
 			oiValue := data.OpenInterest.Latest * data.CurrentPrice
-			oiValueInMillions := oiValue / 1_000_000
-			if oiValueInMillions < minOIThresholdMillions {
-				logger.Infof("⚠️  %s OI value too low (%.2fM USD < %.1fM), skipping coin",
-					coin.Symbol, oiValueInMillions, minOIThresholdMillions)
+			if !keepCoinByOILiquidity(isExistingPosition, isXyzAsset, oiValue, enableOIFilter, minOITHRESHOLDUSDT) {
+				logger.Infof("⚠️  %s OI value too low (%.2fM USD), skipping coin",
+					coin.Symbol, oiValue/1_000_000)
 				continue
 			}
 		}
