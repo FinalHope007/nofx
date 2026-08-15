@@ -84,7 +84,7 @@ func TestLeverageFallback(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Use default position value ratios for testing (10x for BTC/ETH, 1.5x for altcoins)
-			err := validateDecision(&tt.decision, tt.accountEquity, tt.btcEthLeverage, tt.altcoinLeverage, 10.0, 1.5)
+			err := validateDecision(&tt.decision, tt.accountEquity, tt.btcEthLeverage, tt.altcoinLeverage, 10.0, 1.5, 12, 3.0)
 
 			// Check error status
 			if (err != nil) != tt.wantError {
@@ -110,7 +110,7 @@ func TestClaw402XyzAllowsFullTenXNotional(t *testing.T) {
 		TakeProfit:      120,
 	}
 
-	if err := validateDecision(&decision, 30.68, 10, 10, 10.0, 10.0); err != nil {
+	if err := validateDecision(&decision, 30.68, 10, 10, 10.0, 10.0, 12, 3.0); err != nil {
 		t.Fatalf("xyz TradeFi Claw402 full 10x notional should pass validation: %v", err)
 	}
 }
