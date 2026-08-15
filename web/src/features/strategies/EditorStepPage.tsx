@@ -181,6 +181,13 @@ export function EditorStepPage() {
         enableRsi,
         enableOi,
         enableFundingRate,
+        maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
+        maxMarginUsage: 1.0, minConfidence: 78,
+        enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
+        maxOpensPerHour: 3, maxOpensPerCycle: 2,
+        minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240,
+        earlyCloseStopLossBypassPct: -3.0, earlyCloseTakeProfitBypassPct: 8.0,
+        noiseCloseLossFloorPct: -2.0, noiseCloseProfitCeilingPct: 3.0,
         scopeUnits: scope.units,
         scopeMode: scope.mode,
       })

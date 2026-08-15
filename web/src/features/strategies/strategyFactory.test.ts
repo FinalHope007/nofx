@@ -79,6 +79,13 @@ describe('strategy factory', () => {
       decisionContext: { enabled: true, recent_count: 8, mode: 'structured' },
       scopeUnits: [freeUnit('gainers'), freeUnit('losers')],
       scopeMode: 'overlap',
+      maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
+      maxMarginUsage: 1.0, minConfidence: 78,
+      enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
+      maxOpensPerHour: 3, maxOpensPerCycle: 2,
+      minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240,
+      earlyCloseStopLossBypassPct: -3.0, earlyCloseTakeProfitBypassPct: 8.0,
+      noiseCloseLossFloorPct: -2.0, noiseCloseProfitCeilingPct: 3.0,
     })
     const cs = cfg.ai_config?.coin_source
     expect(cs?.source_type).toBe('custom')
@@ -110,6 +117,13 @@ describe('strategy factory', () => {
       enableAI500Data: true, enableOIData: true, enableNetflowData: true,
       enablePriceData: true, dataDurations: ['15m', '1h'],
       enableEma: true, enableMacd: true, enableRsi: true,
+      maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
+      maxMarginUsage: 1.0, minConfidence: 78,
+      enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
+      maxOpensPerHour: 3, maxOpensPerCycle: 2,
+      minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240,
+      earlyCloseStopLossBypassPct: -3.0, earlyCloseTakeProfitBypassPct: 8.0,
+      noiseCloseLossFloorPct: -2.0, noiseCloseProfitCeilingPct: 3.0,
     })
     const ind = cfg.ai_config?.indicators
     expect(ind?.enable_ai500_data).toBe(true)
@@ -137,6 +151,13 @@ describe('strategy factory', () => {
       decisionContext: { enabled: true, recent_count: 8, mode: 'digest' },
       scopeUnits: [freeUnit('gainers')],
       scopeMode: 'union',
+      maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
+      maxMarginUsage: 1.0, minConfidence: 78,
+      enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
+      maxOpensPerHour: 3, maxOpensPerCycle: 2,
+      minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240,
+      earlyCloseStopLossBypassPct: -3.0, earlyCloseTakeProfitBypassPct: 8.0,
+      noiseCloseLossFloorPct: -2.0, noiseCloseProfitCeilingPct: 3.0,
     })
     expect(cfg.ai_config?.custom_prompt).toBe('hello')
     expect(cfg.ai_config?.decision_context).toEqual({

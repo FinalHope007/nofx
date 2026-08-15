@@ -44,6 +44,7 @@ export interface StrategyConfig {
   // Language setting: "zh" for Chinese, "en" for English
   // Determines the language used for data formatting and prompt generation
   language?: 'zh' | 'en';
+  trading_style?: 'scalp' | 'intraday' | 'swing' | 'default';
   // AI trading configuration. Legacy flat fields below are accepted only for
   // old data returned before the schema was split by strategy type.
   ai_config?: AIStrategyConfig;
@@ -237,6 +238,21 @@ export interface RiskControlConfig {
   min_position_size: number;       // Min position size in USDT (CODE ENFORCED)
   min_risk_reward_ratio: number;   // Min take_profit / stop_loss ratio (AI guided)
   min_confidence: number;          // Min AI confidence to open position (AI guided)
+  enable_oi_liquidity_filter: boolean;
+  oi_liquidity_filter_min_usdt: number;
+  throttling: ThrottlingConfig;
+}
+
+export interface ThrottlingConfig {
+  max_opens_per_hour: number;
+  max_opens_per_cycle: number;
+  min_hold_duration_min: number;
+  noise_close_hold_duration_min: number;
+  reentry_cooldown_min: number;
+  early_close_stop_loss_bypass_pct: number;
+  early_close_take_profit_bypass_pct: number;
+  noise_close_loss_floor_pct: number;
+  noise_close_profit_ceiling_pct: number;
 }
 
 // A single selected trading-scope card (from the scope wizard step).

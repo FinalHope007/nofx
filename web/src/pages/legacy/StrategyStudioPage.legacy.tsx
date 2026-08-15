@@ -252,6 +252,19 @@ function defaultRisk(risk?: Partial<RiskControlConfig>): RiskControlConfig {
     min_position_size: risk?.min_position_size || 12,
     min_risk_reward_ratio: risk?.min_risk_reward_ratio || 3,
     min_confidence: risk?.min_confidence || 78,
+    enable_oi_liquidity_filter: risk?.enable_oi_liquidity_filter ?? true,
+    oi_liquidity_filter_min_usdt: risk?.oi_liquidity_filter_min_usdt || 15000000,
+    throttling: risk?.throttling || {
+      max_opens_per_hour: 3,
+      max_opens_per_cycle: 2,
+      min_hold_duration_min: 90,
+      noise_close_hold_duration_min: 180,
+      reentry_cooldown_min: 240,
+      early_close_stop_loss_bypass_pct: -3.0,
+      early_close_take_profit_bypass_pct: 8.0,
+      noise_close_loss_floor_pct: -2.0,
+      noise_close_profit_ceiling_pct: 3.0,
+    },
   }
 }
 

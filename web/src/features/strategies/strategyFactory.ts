@@ -30,6 +30,37 @@ export interface StrategyEditorForm {
   enableRsi?: boolean
   enableOi?: boolean
   enableFundingRate?: boolean
+  tradingStyle?: 'scalp' | 'intraday' | 'swing' | 'default'
+  maxPositions: number
+  minPositionSize: number
+  minRiskRewardRatio: number
+  maxMarginUsage: number
+  minConfidence: number
+  enableOILiquidityFilter: boolean
+  oiLiquidityFilterMinUSDT: number
+  maxOpensPerHour: number
+  maxOpensPerCycle: number
+  minHoldDurationMin: number
+  noiseCloseHoldDurationMin: number
+  reentryCooldownMin: number
+  earlyCloseStopLossBypassPct: number
+  earlyCloseTakeProfitBypassPct: number
+  noiseCloseLossFloorPct: number
+  noiseCloseProfitCeilingPct: number
+}
+
+export type TradingStyle = 'scalp' | 'intraday' | 'swing' | 'default'
+
+export const TRADING_STYLE_PRESETS: Record<TradingStyle, Partial<StrategyEditorForm>> = {
+  scalp: { maxPositions: 5, maxOpensPerHour: 8, maxOpensPerCycle: 4, minHoldDurationMin: 10, noiseCloseHoldDurationMin: 30, reentryCooldownMin: 30, minRiskRewardRatio: 1.5, minPositionSize: 12 },
+  intraday: { maxPositions: 4, maxOpensPerHour: 5, maxOpensPerCycle: 3, minHoldDurationMin: 45, noiseCloseHoldDurationMin: 90, reentryCooldownMin: 120, minRiskRewardRatio: 2.0, minPositionSize: 12 },
+  swing: { maxPositions: 2, maxOpensPerHour: 2, maxOpensPerCycle: 1, minHoldDurationMin: 360, noiseCloseHoldDurationMin: 720, reentryCooldownMin: 480, minRiskRewardRatio: 3.0, minPositionSize: 12 },
+  default: { maxPositions: 3, maxOpensPerHour: 3, maxOpensPerCycle: 2, minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240, minRiskRewardRatio: 3.0, minPositionSize: 12 },
+}
+
+export function applyTradingStyle(style: TradingStyle, form: StrategyEditorForm): StrategyEditorForm {
+  const patch = TRADING_STYLE_PRESETS[style]
+  return { ...form, tradingStyle: style, ...patch }
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -179,9 +210,25 @@ export function defaultRiskControl(input?: {
   altcoinMaxLeverage?: number
   btcEthPositionRatio?: number
   altcoinPositionRatio?: number
+  maxPositions?: number
+  minPositionSize?: number
+  minRiskRewardRatio?: number
+  maxMarginUsage?: number
+  minConfidence?: number
+  enableOILiquidityFilter?: boolean
+  oiLiquidityFilterMinUSDT?: number
+  maxOpensPerHour?: number
+  maxOpensPerCycle?: number
+  minHoldDurationMin?: number
+  noiseCloseHoldDurationMin?: number
+  reentryCooldownMin?: number
+  earlyCloseStopLossBypassPct?: number
+  earlyCloseTakeProfitBypassPct?: number
+  noiseCloseLossFloorPct?: number
+  noiseCloseProfitCeilingPct?: number
 }): RiskControlConfig {
   return {
-    max_positions: 2,
+    max_positions: clamp(input?.maxPositions ?? 2, 1, 20),
     btc_eth_max_leverage: clamp(input?.btcEthMaxLeverage ?? 5, 1, 20),
     altcoin_max_leverage: clamp(input?.altcoinMaxLeverage ?? 5, 1, 20),
     btc_eth_max_position_value_ratio: clamp(
@@ -194,10 +241,23 @@ export function defaultRiskControl(input?: {
       0.5,
       10
     ),
-    max_margin_usage: 1.0,
-    min_position_size: 12,
-    min_risk_reward_ratio: 3,
-    min_confidence: 78,
+    max_margin_usage: clamp(input?.maxMarginUsage ?? 1.0, 0.1, 1.0),
+    min_position_size: clamp(input?.minPositionSize ?? 12, 1, 1000000),
+    min_risk_reward_ratio: clamp(input?.minRiskRewardRatio ?? 3, 0.1, 100),
+    min_confidence: clamp(input?.minConfidence ?? 78, 0, 100),
+    enable_oi_liquidity_filter: input?.enableOILiquidityFilter ?? true,
+    oi_liquidity_filter_min_usdt: clamp(input?.oiLiquidityFilterMinUSDT ?? 15000000, 0, Number.MAX_SAFE_INTEGER),
+    throttling: {
+      max_opens_per_hour: clamp(input?.maxOpensPerHour ?? 3, 1, 100),
+      max_opens_per_cycle: clamp(input?.maxOpensPerCycle ?? 2, 1, 100),
+      min_hold_duration_min: clamp(input?.minHoldDurationMin ?? 90, 0, Number.MAX_SAFE_INTEGER),
+      noise_close_hold_duration_min: clamp(input?.noiseCloseHoldDurationMin ?? 180, 0, Number.MAX_SAFE_INTEGER),
+      reentry_cooldown_min: clamp(input?.reentryCooldownMin ?? 240, 0, Number.MAX_SAFE_INTEGER),
+      early_close_stop_loss_bypass_pct: clamp(input?.earlyCloseStopLossBypassPct ?? -3.0, -100, 100),
+      early_close_take_profit_bypass_pct: clamp(input?.earlyCloseTakeProfitBypassPct ?? 8.0, -100, 100),
+      noise_close_loss_floor_pct: clamp(input?.noiseCloseLossFloorPct ?? -2.0, -100, 100),
+      noise_close_profit_ceiling_pct: clamp(input?.noiseCloseProfitCeilingPct ?? 3.0, -100, 100),
+    },
   }
 }
 
@@ -205,6 +265,7 @@ export function buildStrategyConfig(form: StrategyEditorForm): StrategyConfig {
   return {
     strategy_type: 'ai_trading',
     language: 'en',
+    trading_style: form.tradingStyle,
     ai_config: {
       coin_source: buildCoinSource(form.scopeUnits, form.scopeMode),
       indicators: {
