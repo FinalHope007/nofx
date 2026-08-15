@@ -55,7 +55,9 @@ export const TRADING_STYLE_PRESETS: Record<TradingStyle, Partial<StrategyEditorF
   scalp: { maxPositions: 5, maxOpensPerHour: 8, maxOpensPerCycle: 4, minHoldDurationMin: 10, noiseCloseHoldDurationMin: 30, reentryCooldownMin: 30, minRiskRewardRatio: 1.5, minPositionSize: 12 },
   intraday: { maxPositions: 4, maxOpensPerHour: 5, maxOpensPerCycle: 3, minHoldDurationMin: 45, noiseCloseHoldDurationMin: 90, reentryCooldownMin: 120, minRiskRewardRatio: 2.0, minPositionSize: 12 },
   swing: { maxPositions: 2, maxOpensPerHour: 2, maxOpensPerCycle: 1, minHoldDurationMin: 360, noiseCloseHoldDurationMin: 720, reentryCooldownMin: 480, minRiskRewardRatio: 3.0, minPositionSize: 12 },
-  default: { maxPositions: 3, maxOpensPerHour: 3, maxOpensPerCycle: 2, minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240, minRiskRewardRatio: 3.0, minPositionSize: 12 },
+  // `default` preset mirrors defaultRiskControl() defaults so applying the
+  // "Default" style is a true no-op; keep these fields in sync to avoid drift.
+  default: { maxPositions: 2, maxOpensPerHour: 3, maxOpensPerCycle: 2, minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240, minRiskRewardRatio: 3.0, minPositionSize: 12 },
 }
 
 export function applyTradingStyle(style: TradingStyle, form: StrategyEditorForm): StrategyEditorForm {

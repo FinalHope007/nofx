@@ -30,7 +30,7 @@ describe('applyTradingStyle', () => {
 
   it('default style resets to baseline', () => {
     const out = applyTradingStyle('default', { ...baseForm })
-    expect(out.maxPositions).toBe(3)
+    expect(out.maxPositions).toBe(2)
     expect(out.minHoldDurationMin).toBe(90)
   })
 })
