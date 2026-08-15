@@ -9,25 +9,76 @@ import (
 	"time"
 )
 
-const (
-	// Anti-churn open caps: at most a couple of new positions per hour/cycle.
-	autopilotMaxOpensPerHour  = 3
-	autopilotMaxOpensPerCycle = 2
+type throttleDurationConfig struct {
+	minHold, noiseClose, reentry time.Duration
+}
 
-	// Exit gates, validated by decision replay (2026-07-26, 4154 cycles,
-	// 3-fold robustness): gates beat no-gates by 34 pts and the old rigid
-	// 4h/8h by 16 pts of worst-fold score; the searched optimum sits at these
-	// values. Thresholds are PRICE-move percentages (leverage-independent).
-	autopilotMinHoldDuration        = 90 * time.Minute
-	autopilotNoiseCloseHoldDuration = 3 * time.Hour
-	// Re-entering a just-closed symbol was a consistent loss source: the
-	// replay's top-20 configs cluster tightly at ~4h.
-	autopilotReentryCooldown        = 4 * time.Hour
-	earlyCloseStopLossBypassPct     = -3.0
-	earlyCloseTakeProfitBypassPct   = 8.0
-	noiseCloseLossFloorPct          = -2.0
-	noiseCloseProfitCeilingPct      = 3.0
-)
+// throttleConfig returns the effective throttle gates. Zero/unset fields fall
+// back to the historical hardcoded defaults (Section B) so existing strategies
+// and nil-config tests behave exactly as before.
+func (at *AutoTrader) throttleConfig() store.ThrottlingConfig {
+	if at == nil || at.config.StrategyConfig == nil {
+		return defaultThrottlingConfig()
+	}
+	return withThrottlingDefaults(at.config.StrategyConfig.RiskControl.Throttling)
+}
+
+// defaultThrottlingConfig returns the historical Section B defaults.
+func defaultThrottlingConfig() store.ThrottlingConfig {
+	return store.ThrottlingConfig{
+		MaxOpensPerHour:               3,
+		MaxOpensPerCycle:              2,
+		MinHoldDurationMin:            90,
+		NoiseCloseHoldDurationMin:     180,
+		ReentryCooldownMin:            240,
+		EarlyCloseStopLossBypassPct:   -3.0,
+		EarlyCloseTakeProfitBypassPct: 8.0,
+		NoiseCloseLossFloorPct:        -2.0,
+		NoiseCloseProfitCeilingPct:    3.0,
+	}
+}
+
+// withThrottlingDefaults fills any zero-valued gate with the historical default.
+func withThrottlingDefaults(t store.ThrottlingConfig) store.ThrottlingConfig {
+	d := defaultThrottlingConfig()
+	if t.MaxOpensPerHour <= 0 {
+		t.MaxOpensPerHour = d.MaxOpensPerHour
+	}
+	if t.MaxOpensPerCycle <= 0 {
+		t.MaxOpensPerCycle = d.MaxOpensPerCycle
+	}
+	if t.MinHoldDurationMin <= 0 {
+		t.MinHoldDurationMin = d.MinHoldDurationMin
+	}
+	if t.NoiseCloseHoldDurationMin <= 0 {
+		t.NoiseCloseHoldDurationMin = d.NoiseCloseHoldDurationMin
+	}
+	if t.ReentryCooldownMin <= 0 {
+		t.ReentryCooldownMin = d.ReentryCooldownMin
+	}
+	if t.EarlyCloseStopLossBypassPct == 0 {
+		t.EarlyCloseStopLossBypassPct = d.EarlyCloseStopLossBypassPct
+	}
+	if t.EarlyCloseTakeProfitBypassPct == 0 {
+		t.EarlyCloseTakeProfitBypassPct = d.EarlyCloseTakeProfitBypassPct
+	}
+	if t.NoiseCloseLossFloorPct == 0 {
+		t.NoiseCloseLossFloorPct = d.NoiseCloseLossFloorPct
+	}
+	if t.NoiseCloseProfitCeilingPct == 0 {
+		t.NoiseCloseProfitCeilingPct = d.NoiseCloseProfitCeilingPct
+	}
+	return t
+}
+
+func (at *AutoTrader) throttleDurations() throttleDurationConfig {
+	tc := at.throttleConfig()
+	return throttleDurationConfig{
+		minHold:    time.Duration(tc.MinHoldDurationMin) * time.Minute,
+		noiseClose: time.Duration(tc.NoiseCloseHoldDurationMin) * time.Minute,
+		reentry:    time.Duration(tc.ReentryCooldownMin) * time.Minute,
+	}
+}
 
 // positionPricePnLPct converts the margin-based UnrealizedPnLPct reported for
 // a position into the underlying price-move percentage.
@@ -106,8 +157,8 @@ func (at *AutoTrader) openThrottleReason(decision kernel.Decision, ctx *kernel.C
 		return ""
 	}
 
-	if opensQueuedThisCycle >= autopilotMaxOpensPerCycle {
-		return fmt.Sprintf("trade throttle: only %d new position may be opened per cycle", autopilotMaxOpensPerCycle)
+	if opensQueuedThisCycle >= at.throttleConfig().MaxOpensPerCycle {
+		return fmt.Sprintf("trade throttle: only %d new position may be opened per cycle", at.throttleConfig().MaxOpensPerCycle)
 	}
 
 	if pos := findAnyContextPosition(ctx, symbol); pos != nil {
@@ -117,13 +168,14 @@ func (at *AutoTrader) openThrottleReason(decision kernel.Decision, ctx *kernel.C
 	openCount, err := at.countRecentOpenOrders(time.Now().Add(-1 * time.Hour))
 	if err != nil {
 		at.logWarnf("⚠️ Trade throttle could not read recent open orders: %v", err)
-	} else if openCount >= autopilotMaxOpensPerHour {
-		return fmt.Sprintf("trade throttle: %d open order already executed in the last hour; max is %d", openCount, autopilotMaxOpensPerHour)
+	} else if openCount >= at.throttleConfig().MaxOpensPerHour {
+		return fmt.Sprintf("trade throttle: %d open order already executed in the last hour; max is %d", openCount, at.throttleConfig().MaxOpensPerHour)
 	}
 
-	if order := at.findRecentCloseOrder(symbol, time.Now().Add(-autopilotReentryCooldown)); order != nil {
+	d := at.throttleDurations()
+	if order := at.findRecentCloseOrder(symbol, time.Now().Add(-d.reentry)); order != nil {
 		age := time.Since(time.UnixMilli(order.CreatedAt))
-		remaining := autopilotReentryCooldown - age
+		remaining := d.reentry - age
 		if remaining < 0 {
 			remaining = 0
 		}
@@ -148,7 +200,8 @@ func (at *AutoTrader) closeThrottleReason(decision kernel.Decision, ctx *kernel.
 		entryTime = pos.UpdateTime
 	}
 
-	if order := at.findRecentOpenOrder(symbol, side, time.Now().Add(-autopilotNoiseCloseHoldDuration)); order != nil && order.CreatedAt > entryTime {
+	d := at.throttleDurations()
+	if order := at.findRecentOpenOrder(symbol, side, time.Now().Add(-d.noiseClose)); order != nil && order.CreatedAt > entryTime {
 		entryTime = order.CreatedAt
 	}
 	if entryTime <= 0 {
@@ -159,41 +212,42 @@ func (at *AutoTrader) closeThrottleReason(decision kernel.Decision, ctx *kernel.
 	if heldFor < 0 {
 		heldFor = 0
 	}
-	if heldFor >= autopilotMinHoldDuration {
-		if heldFor >= autopilotNoiseCloseHoldDuration ||
-			pnlPct <= noiseCloseLossFloorPct ||
-			pnlPct >= noiseCloseProfitCeilingPct {
+	tc := at.throttleConfig()
+	if heldFor >= d.minHold {
+		if heldFor >= d.noiseClose ||
+			pnlPct <= tc.NoiseCloseLossFloorPct ||
+			pnlPct >= tc.NoiseCloseProfitCeilingPct {
 			return ""
 		}
 
-		remaining := autopilotNoiseCloseHoldDuration - heldFor
+		remaining := d.noiseClose - heldFor
 		return fmt.Sprintf(
 			"trade throttle: %s %s has been held for %s with price PnL %.2f%%; it is still inside the noise band %.1f%% to %.1f%%, so wait about %s before a flat/small close",
 			symbol,
 			side,
 			roundDuration(heldFor),
 			pnlPct,
-			noiseCloseLossFloorPct,
-			noiseCloseProfitCeilingPct,
+			tc.NoiseCloseLossFloorPct,
+			tc.NoiseCloseProfitCeilingPct,
 			roundDuration(remaining),
 		)
 	}
 
 	// Do not block true risk exits or unusually strong take-profit exits.
-	if pnlPct <= earlyCloseStopLossBypassPct || pnlPct >= earlyCloseTakeProfitBypassPct {
+	if pnlPct <= tc.EarlyCloseStopLossBypassPct || pnlPct >= tc.EarlyCloseTakeProfitBypassPct {
 		return ""
 	}
 
-	remaining := autopilotMinHoldDuration - heldFor
+	remaining := d.minHold - heldFor
 	return fmt.Sprintf(
 		"trade throttle: %s %s has only been held for %s with price PnL %.2f%%; min AI-managed hold is %s unless price loss <= %.1f%% or price profit >= %.1f%%",
 		symbol,
 		side,
 		roundDuration(heldFor),
 		pnlPct,
-		roundDuration(autopilotMinHoldDuration),
-		earlyCloseStopLossBypassPct,
-		earlyCloseTakeProfitBypassPct,
+		roundDuration(d.minHold),
+		tc.EarlyCloseStopLossBypassPct,
+		tc.EarlyCloseTakeProfitBypassPct,
 	) + fmt.Sprintf("; wait about %s", roundDuration(remaining))
 }
 
