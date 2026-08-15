@@ -3,7 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Loader2, Save } from 'lucide-react'
 import { useStrategyDraft } from './draftStore'
 import { strategyManagerApi } from './strategyApi'
-import { buildStrategyConfig } from './strategyFactory'
+import {
+  buildStrategyConfig,
+  TRADING_STYLE_PRESETS,
+  type TradingStyle,
+} from './strategyFactory'
 import { defaultDataSources } from './dataSourceDefaults'
 import { notify } from '../../lib/notify'
 import { api } from '../../lib/api'
@@ -39,6 +43,30 @@ export function EditorStepPage() {
   const [contextMode, setContextMode] = useState<'structured' | 'digest'>(
     'structured'
   )
+  const [tradingStyle, setTradingStyle] = useState<TradingStyle>('default')
+  const [maxPositions, setMaxPositions] = useState(2)
+  const [minPositionSize, setMinPositionSize] = useState(12)
+  const [minRiskRewardRatio, setMinRiskRewardRatio] = useState(3.0)
+  const [maxMarginUsage, setMaxMarginUsage] = useState(1.0)
+  const [minConfidence, setMinConfidence] = useState(78)
+  const [enableOILiquidityFilter, setEnableOILiquidityFilter] = useState(true)
+  const [oiLiquidityFilterMinUSDT, setOILiquidityFilterMinUSDT] = useState(
+    15000000
+  )
+  const [maxOpensPerHour, setMaxOpensPerHour] = useState(3)
+  const [maxOpensPerCycle, setMaxOpensPerCycle] = useState(2)
+  const [minHoldDurationMin, setMinHoldDurationMin] = useState(90)
+  const [noiseCloseHoldDurationMin, setNoiseCloseHoldDurationMin] = useState(
+    180
+  )
+  const [reentryCooldownMin, setReentryCooldownMin] = useState(240)
+  const [earlyCloseStopLossBypassPct, setEarlyCloseStopLossBypassPct] =
+    useState(-3.0)
+  const [earlyCloseTakeProfitBypassPct, setEarlyCloseTakeProfitBypassPct] =
+    useState(8.0)
+  const [noiseCloseLossFloorPct, setNoiseCloseLossFloorPct] = useState(-2.0)
+  const [noiseCloseProfitCeilingPct, setNoiseCloseProfitCeilingPct] =
+    useState(3.0)
   const [saving, setSaving] = useState(false)
 
   const initialSources = defaultDataSources(scope.units)
@@ -77,12 +105,35 @@ export function EditorStepPage() {
         }
         const ai = strategy.config.ai_config
         const ind = ai?.indicators
+        const rc = ai?.risk_control
+        const th = rc?.throttling
         setName(strategy.name)
         setPrompt(ai?.custom_prompt ?? '')
-        setBtcEthLeverage(ai?.risk_control.btc_eth_max_leverage ?? 5)
-        setAltLeverage(ai?.risk_control.altcoin_max_leverage ?? 5)
-        setBtcEthRatio(ai?.risk_control.btc_eth_max_position_value_ratio ?? 5)
-        setAltRatio(ai?.risk_control.altcoin_max_position_value_ratio ?? 5)
+        setBtcEthLeverage(rc?.btc_eth_max_leverage ?? 5)
+        setAltLeverage(rc?.altcoin_max_leverage ?? 5)
+        setBtcEthRatio(rc?.btc_eth_max_position_value_ratio ?? 5)
+        setAltRatio(rc?.altcoin_max_position_value_ratio ?? 5)
+        setTradingStyle(strategy.config.trading_style ?? 'default')
+        setMaxPositions(rc?.max_positions ?? 2)
+        setMinPositionSize(rc?.min_position_size ?? 12)
+        setMinRiskRewardRatio(rc?.min_risk_reward_ratio ?? 3.0)
+        setMaxMarginUsage(rc?.max_margin_usage ?? 1.0)
+        setMinConfidence(rc?.min_confidence ?? 78)
+        setEnableOILiquidityFilter(rc?.enable_oi_liquidity_filter ?? true)
+        setOILiquidityFilterMinUSDT(rc?.oi_liquidity_filter_min_usdt ?? 15000000)
+        setMaxOpensPerHour(th?.max_opens_per_hour ?? 3)
+        setMaxOpensPerCycle(th?.max_opens_per_cycle ?? 2)
+        setMinHoldDurationMin(th?.min_hold_duration_min ?? 90)
+        setNoiseCloseHoldDurationMin(th?.noise_close_hold_duration_min ?? 180)
+        setReentryCooldownMin(th?.reentry_cooldown_min ?? 240)
+        setEarlyCloseStopLossBypassPct(
+          th?.early_close_stop_loss_bypass_pct ?? -3.0
+        )
+        setEarlyCloseTakeProfitBypassPct(
+          th?.early_close_take_profit_bypass_pct ?? 8.0
+        )
+        setNoiseCloseLossFloorPct(th?.noise_close_loss_floor_pct ?? -2.0)
+        setNoiseCloseProfitCeilingPct(th?.noise_close_profit_ceiling_pct ?? 3.0)
         setTimeframes(ind?.klines.selected_timeframes ?? ['15m'])
         setExcluded((ai?.coin_source.excluded_coins ?? []).join(', '))
 
@@ -140,6 +191,26 @@ export function EditorStepPage() {
     )
   }
 
+  const applyStyle = (style: TradingStyle) => {
+    setTradingStyle(style)
+    const patch = TRADING_STYLE_PRESETS[style]
+    if (patch.maxPositions !== undefined) setMaxPositions(patch.maxPositions)
+    if (patch.minPositionSize !== undefined)
+      setMinPositionSize(patch.minPositionSize)
+    if (patch.minRiskRewardRatio !== undefined)
+      setMinRiskRewardRatio(patch.minRiskRewardRatio)
+    if (patch.maxOpensPerHour !== undefined)
+      setMaxOpensPerHour(patch.maxOpensPerHour)
+    if (patch.maxOpensPerCycle !== undefined)
+      setMaxOpensPerCycle(patch.maxOpensPerCycle)
+    if (patch.minHoldDurationMin !== undefined)
+      setMinHoldDurationMin(patch.minHoldDurationMin)
+    if (patch.noiseCloseHoldDurationMin !== undefined)
+      setNoiseCloseHoldDurationMin(patch.noiseCloseHoldDurationMin)
+    if (patch.reentryCooldownMin !== undefined)
+      setReentryCooldownMin(patch.reentryCooldownMin)
+  }
+
   const handleSave = async () => {
     if (saving) return
     if (!name.trim()) {
@@ -181,13 +252,23 @@ export function EditorStepPage() {
         enableRsi,
         enableOi,
         enableFundingRate,
-        maxPositions: 2, minPositionSize: 12, minRiskRewardRatio: 3.0,
-        maxMarginUsage: 1.0, minConfidence: 78,
-        enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
-        maxOpensPerHour: 3, maxOpensPerCycle: 2,
-        minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240,
-        earlyCloseStopLossBypassPct: -3.0, earlyCloseTakeProfitBypassPct: 8.0,
-        noiseCloseLossFloorPct: -2.0, noiseCloseProfitCeilingPct: 3.0,
+        tradingStyle,
+        maxPositions,
+        minPositionSize,
+        minRiskRewardRatio,
+        maxMarginUsage,
+        minConfidence,
+        enableOILiquidityFilter,
+        oiLiquidityFilterMinUSDT,
+        maxOpensPerHour,
+        maxOpensPerCycle,
+        minHoldDurationMin,
+        noiseCloseHoldDurationMin,
+        reentryCooldownMin,
+        earlyCloseStopLossBypassPct,
+        earlyCloseTakeProfitBypassPct,
+        noiseCloseLossFloorPct,
+        noiseCloseProfitCeilingPct,
         scopeUnits: scope.units,
         scopeMode: scope.mode,
       })
@@ -313,6 +394,24 @@ export function EditorStepPage() {
 
         <fieldset className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg-deeper p-4">
           <legend className="px-2 text-sm font-semibold text-nofx-text">
+            Trading Style
+          </legend>
+          <div className="flex flex-wrap gap-2">
+            {(['scalp', 'intraday', 'swing', 'default'] as TradingStyle[]).map(
+              (s) => (
+                <ToggleChip
+                  key={s}
+                  label={s[0].toUpperCase() + s.slice(1)}
+                  active={tradingStyle === s}
+                  onClick={() => applyStyle(s)}
+                />
+              )
+            )}
+          </div>
+        </fieldset>
+
+        <fieldset className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg-deeper p-4">
+          <legend className="px-2 text-sm font-semibold text-nofx-text">
             Basic Rules
           </legend>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -351,6 +450,20 @@ export function EditorStepPage() {
               min={0.5}
               max={10}
               step={0.5}
+            />
+            <NumberField
+              label="Max concurrent positions"
+              value={maxPositions}
+              onChange={setMaxPositions}
+              min={1}
+              max={8}
+            />
+            <NumberField
+              label="Min position size (USDT)"
+              value={minPositionSize}
+              onChange={setMinPositionSize}
+              min={10}
+              max={1000}
             />
           </div>
         </fieldset>
@@ -486,6 +599,53 @@ export function EditorStepPage() {
             />
           </label>
 
+          <div className="mb-4 grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="Min risk/reward ratio"
+              value={minRiskRewardRatio}
+              onChange={setMinRiskRewardRatio}
+              min={1.0}
+              max={10.0}
+              step={0.5}
+            />
+            <NumberField
+              label="Max margin usage (%) — AI guidance"
+              value={maxMarginUsage}
+              onChange={setMaxMarginUsage}
+              min={0.1}
+              max={1.0}
+              step={0.1}
+            />
+            <NumberField
+              label="Min AI confidence"
+              value={minConfidence}
+              onChange={setMinConfidence}
+              min={50}
+              max={100}
+            />
+          </div>
+
+          <div className="mb-4">
+            <span className="text-sm text-nofx-text-muted">
+              OI-liquidity filter
+            </span>
+            <Toggle
+              checked={enableOILiquidityFilter}
+              onChange={() => setEnableOILiquidityFilter(!enableOILiquidityFilter)}
+              label={enableOILiquidityFilter ? 'On' : 'Off'}
+            />
+            <input
+              type="number"
+              value={oiLiquidityFilterMinUSDT}
+              onChange={(e) =>
+                setOILiquidityFilterMinUSDT(Number(e.target.value))
+              }
+              disabled={!enableOILiquidityFilter}
+              className="mt-1 w-full rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-3 py-2 text-sm text-nofx-text disabled:opacity-40"
+              min={0}
+            />
+          </div>
+
           <div className="rounded-md border border-nofx-danger/25 bg-nofx-danger/10 p-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-nofx-text">
@@ -524,6 +684,81 @@ export function EditorStepPage() {
             <p className="mt-2 text-xs text-nofx-danger">
               Runtime prompt wiring is pending backend work.
             </p>
+          </div>
+        </fieldset>
+
+        <fieldset className="rounded-lg border border-nofx-danger/30 bg-nofx-danger/5 p-4">
+          <legend className="px-2 text-sm font-semibold text-nofx-danger">
+            Throttling Settings (Risky)
+          </legend>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="Max opens per hour"
+              value={maxOpensPerHour}
+              onChange={setMaxOpensPerHour}
+              min={1}
+              max={100}
+            />
+            <NumberField
+              label="Max opens per cycle"
+              value={maxOpensPerCycle}
+              onChange={setMaxOpensPerCycle}
+              min={1}
+              max={100}
+            />
+            <NumberField
+              label="Min hold before close (min)"
+              value={minHoldDurationMin}
+              onChange={setMinHoldDurationMin}
+              min={1}
+              max={10080}
+            />
+            <NumberField
+              label="Noise-band close window (min)"
+              value={noiseCloseHoldDurationMin}
+              onChange={setNoiseCloseHoldDurationMin}
+              min={1}
+              max={10080}
+            />
+            <NumberField
+              label="Re-entry cooldown (min)"
+              value={reentryCooldownMin}
+              onChange={setReentryCooldownMin}
+              min={1}
+              max={10080}
+            />
+            <NumberField
+              label="Early-close stop-loss bypass (%)"
+              value={earlyCloseStopLossBypassPct}
+              onChange={setEarlyCloseStopLossBypassPct}
+              min={-100}
+              max={0}
+              step={0.5}
+            />
+            <NumberField
+              label="Early-close take-profit bypass (%)"
+              value={earlyCloseTakeProfitBypassPct}
+              onChange={setEarlyCloseTakeProfitBypassPct}
+              min={0}
+              max={100}
+              step={0.5}
+            />
+            <NumberField
+              label="Noise-band loss floor (%)"
+              value={noiseCloseLossFloorPct}
+              onChange={setNoiseCloseLossFloorPct}
+              min={-100}
+              max={0}
+              step={0.5}
+            />
+            <NumberField
+              label="Noise-band profit ceiling (%)"
+              value={noiseCloseProfitCeilingPct}
+              onChange={setNoiseCloseProfitCeilingPct}
+              min={0}
+              max={100}
+              step={0.5}
+            />
           </div>
         </fieldset>
       </div>
