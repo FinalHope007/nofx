@@ -85,16 +85,16 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("\n\n")
 	} else if zh {
 		sb.WriteString("# ⏱️ Trading Frequency Awareness\n\n")
-		sb.WriteString("- Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour\n")
-		sb.WriteString("- >2 trades/hour = overtrading\n")
-		sb.WriteString("- Single position hold time ≥ 45-90 minutes\n")
-		sb.WriteString("If you find yourself trading every cycle → standards too low; if closing positions < 45 minutes → too impulsive.\n\n")
+		sb.WriteString("- Excellent traders: 7-8 trades/day ≈ 0.3-0.4 trades/hour\n")
+		sb.WriteString("- >3 trades/hour = overtrading\n")
+		sb.WriteString("- Single position hold time ≥ 30-90 minutes\n")
+		sb.WriteString("If you find yourself trading every cycle → standards too low; if closing positions < 30 minutes → too impulsive.\n\n")
 	} else {
 		sb.WriteString("# ⏱️ Trading Frequency Awareness\n\n")
-		sb.WriteString("- Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour\n")
-		sb.WriteString("- >2 trades/hour = overtrading\n")
-		sb.WriteString("- Single position hold time ≥ 45-90 minutes\n")
-		sb.WriteString("If you find yourself trading every cycle → standards too low; if closing positions < 45 minutes → too impulsive.\n\n")
+		sb.WriteString("- Excellent traders: 7-8 trades/day ≈ 0.3-0.4 trades/hour\n")
+		sb.WriteString("- >3 trades/hour = overtrading\n")
+		sb.WriteString("- Single position hold time ≥ 30-90 minutes\n")
+		sb.WriteString("If you find yourself trading every cycle → standards too low; if closing positions < 30 minutes → too impulsive.\n\n")
 	}
 
 	// 5. Entry standards (editable)
@@ -335,7 +335,7 @@ func writeVergexHardConstraints(sb *strings.Builder, accountEquity float64, risk
 		sb.WriteString("## AI guided\n")
 		sb.WriteString(fmt.Sprintf("- Leverage: every open position must use exactly %dx\n", riskControl.AltcoinMaxLeverage))
 		sb.WriteString(fmt.Sprintf("- Risk/reward: ≥1:%.1f\n", riskControl.MinRiskRewardRatio))
-		sb.WriteString(fmt.Sprintf("- Min confidence to open: ≥%d\n\n", riskControl.MinConfidence))
+		sb.WriteString(fmt.Sprintf("- Min confidence to open  (DO NOT use AI score from AI500 or rank from OI/Net Flow directly as your confidence score): ≥%d\n\n", riskControl.MinConfidence))
 		sb.WriteString("# Position Sizing\n\n")
 		sb.WriteString("For every `open_long` or `open_short`, use the full max notional per position.\n")
 		sb.WriteString("- Do not scale position_size_usd down by confidence.\n")
@@ -352,7 +352,7 @@ func writeVergexHardConstraints(sb *strings.Builder, accountEquity float64, risk
 		sb.WriteString("## AI guided\n")
 		sb.WriteString(fmt.Sprintf("- Leverage: every open position must use exactly %dx\n", riskControl.AltcoinMaxLeverage))
 		sb.WriteString(fmt.Sprintf("- Risk/reward: ≥1:%.1f\n", riskControl.MinRiskRewardRatio))
-		sb.WriteString(fmt.Sprintf("- Min confidence to open: ≥%d\n\n", riskControl.MinConfidence))
+		sb.WriteString(fmt.Sprintf("- Min confidence to open (DO NOT use AI score from AI500 or rank from OI/Net Flow directly as your confidence score): ≥%d\n\n", riskControl.MinConfidence))
 		sb.WriteString("# Position Sizing\n\n")
 		sb.WriteString("For every `open_long` or `open_short`, use the full max notional per position.\n")
 		sb.WriteString("- Do not scale position_size_usd down by confidence.\n")
@@ -580,10 +580,10 @@ func writeHardConstraints(sb *strings.Builder, accountEquity float64, riskContro
 	}
 	if zh {
 		sb.WriteString(fmt.Sprintf("- Risk-Reward Ratio: ≥1:%.1f (take_profit / stop_loss)\n", riskControl.MinRiskRewardRatio))
-		sb.WriteString(fmt.Sprintf("- Min Confidence: ≥%d to open position\n\n", riskControl.MinConfidence))
+		sb.WriteString(fmt.Sprintf("- Min Confidence (DO NOT use AI score from AI500 or rank from OI/Net Flow directly as your confidence score): ≥%d to open position\n\n", riskControl.MinConfidence))
 	} else {
 		sb.WriteString(fmt.Sprintf("- Risk-Reward Ratio: ≥1:%.1f (take_profit / stop_loss)\n", riskControl.MinRiskRewardRatio))
-		sb.WriteString(fmt.Sprintf("- Min Confidence: ≥%d to open position\n\n", riskControl.MinConfidence))
+		sb.WriteString(fmt.Sprintf("- Min Confidence (DO NOT use AI score from AI500 or rank from OI/Net Flow directly as your confidence score): ≥%d to open position\n\n", riskControl.MinConfidence))
 	}
 
 	// Position sizing guidance

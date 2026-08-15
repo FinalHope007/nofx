@@ -12,26 +12,26 @@
 | Gate | Enforced value | File:line | Scope | Config now? | Frontend |
 |---|---|---|---|---|---|
 | Candidate universe cap | `MaxCandidateCoins = 10` | strategy.go:15, clamp 40-56 | all | limit fields, hard-capped 10 | No |
-| Max concurrent positions | `MaxPositions = 8` | strategy.go:16, clamp 96-102 | all | yes `max_positions` | Yes |
+| Max concurrent positions | `MaxPositions = 8` | strategy.go:16, clamp 96-102 | all | yes `max_positions` | Yes, surface in strategy config: Basic Rules |
 | Max timeframes / kline count | `MaxTimeframes=4`, `MinKlineCount=10`, `MaxKlineCount=30` | strategy.go:18-19, 59-73 | all | `selected_timeframes`/`primary_count` | No |
-| Leverage bounds | `1 ≤ lev ≤ 20` (BTC/ETH & alt) | strategy.go:20-22, 105-116 | all | yes `btc_eth_max_leverage`, `altcoin_max_leverage` | Yes, already surfaced |
-| Position-value ratio bounds | `0.5 ≤ ratio ≤ 10.0` | strategy.go:23-24, 119-130 | all | yes `*_max_position_value_ratio` | Yes, already surfaced |
-| Risk-reward bounds | `1.0 ≤ rr ≤ 10.0` | strategy.go:25-26, 133-138 | all | yes `min_risk_reward_ratio` | Yes |
-| Margin-usage bounds | `0.1 ≤ margin ≤ 1.0` | strategy.go:27-28, 139-144 | all | yes `max_margin_usage` | Yes |
-| Position-size bounds | `10 ≤ size ≤ 1000` | strategy.go:29-30 | all | yes `min_position_size` | Yes |
-| Confidence bounds | `50 ≤ conf ≤ 100` | strategy.go:31-32 | all | yes `min_confidence` | Yes |
+| Leverage bounds | `1 ≤ lev ≤ 20` (BTC/ETH & alt) | strategy.go:20-22, 105-116 | all | yes `btc_eth_max_leverage`, `altcoin_max_leverage` | Yes, already surfaced in strategy config: Basic Rules |
+| Position-value ratio bounds | `0.5 ≤ ratio ≤ 10.0` | strategy.go:23-24, 119-130 | all | yes `*_max_position_value_ratio` | Yes, already surfaced in strategy config: Basic Rules |
+| Risk-reward bounds | `1.0 ≤ rr ≤ 10.0` | strategy.go:25-26, 133-138 | all | yes `min_risk_reward_ratio` | Yes, surface in strategy config: Advanced Settings |
+| Margin-usage bounds | `0.1 ≤ margin ≤ 1.0` | strategy.go:27-28, 139-144 | all | yes `max_margin_usage` | Yes, surface in strategy config: Advanced Settings |
+| Position-size bounds | `10 ≤ size ≤ 1000` | strategy.go:29-30 | all | yes `min_position_size` | Yes, surface in strategy config: Basic Rules |
+| Confidence bounds | `50 ≤ conf ≤ 100` | strategy.go:31-32 | all | yes `min_confidence` | Yes, surface in strategy config: Advanced Settings |
 
 ## B. Anti-churn throttle (all hardcoded) — `auto_trader_throttle.go:12-30`, enforced `auto_trader_loop.go:318`
 
 | Gate | Value | Enforced at | Scope | Config now? | Frontend |
 |---|---|---|---|---|---|
-| Opens per hour cap | `autopilotMaxOpensPerHour = 3` | open | autopilot | no | Yes |
-| Opens per cycle cap | `autopilotMaxOpensPerCycle = 2` | open | autopilot | no | Yes |
-| Min hold before normal close | `autopilotMinHoldDuration = 90m` | close | autopilot | no | Yes |
-| Noise-band close window | `autopilotNoiseCloseHoldDuration = 3h` (band −2%..+3%) | close | autopilot | no | Yes |
-| Re-entry cooldown | `autopilotReentryCooldown = 4h` | open | autopilot | no | Yes |
-| SL/TP bypass floors | `earlyCloseStopLossBypass=−3%`, `earlyCloseTakeProfitBypass=+8%` | close | autopilot | no | Yes |
-| Noise band | `noiseCloseLossFloor=−2%`, `noiseCloseProfitCeiling=+3%` | close | autopilot | no | Yes |
+| Opens per hour cap | `autopilotMaxOpensPerHour = 3` | open | autopilot | no | Yes, surface in strategy config: Throttling Settings (Risky) |
+| Opens per cycle cap | `autopilotMaxOpensPerCycle = 2` | open | autopilot | no | Yes, surface in strategy config: Throttling Settings (Risky) |
+| Min hold before normal close | `autopilotMinHoldDuration = 90m` | close | autopilot | no | Yes, surface in strategy config: Throttling Settings (Risky) |
+| Noise-band close window | `autopilotNoiseCloseHoldDuration = 3h` (band −2%..+3%) | close | autopilot | no | Yes, surface in strategy config: Throttling Settings (Risky) |
+| Re-entry cooldown | `autopilotReentryCooldown = 4h` | open | autopilot | no | Yes, surface in strategy config: Throttling Settings (Risky) |
+| SL/TP bypass floors | `earlyCloseStopLossBypass=−3%`, `earlyCloseTakeProfitBypass=+8%` | close | autopilot | no | Yes, surface in strategy config: Throttling Settings (Risky) |
+| Noise band | `noiseCloseLossFloor=−2%`, `noiseCloseProfitCeiling=+3%` | close | autopilot | no | Yes, surface in strategy config: Throttling Settings (Risky) |
 
 > Tuned by replay and hardcoded; commit `574ddfb1` reverted per-strategy configurability.
 
@@ -42,33 +42,33 @@
 
 ## C. Decision validator (hardcoded, before orders) — `kernel/engine_position.go` (via `engine_analysis.go:431`)
 
-| Gate | Value | Enforced at | Scope | Config now? |
-|---|---|---|---|---|
-| Min order size (general) | `minPositionSizeGeneral = 12 USDT` | ai | all | no (config `min_position_size` ignored here) |
-| Min order size (BTC/ETH) | `minPositionSizeBTCETH = 60 USDT` | ai | BTC/ETH | no |
-| Risk/reward floor | `≥ 3.0:1` (ignores `min_risk_reward_ratio`) | ai | all | no |
-| Leverage cap | config tiers; auto-reduce if exceeded | ai | all | yes |
-| Position-value cap | `equity × ratio` (+1% tol) | ai | all | yes |
-| SL/TP ordering | long: SL<TP · short: SL>TP | ai | all | no (rule) |
-| Invalid action reject | whitelist `open/close/hold/wait` | ai | all | no (rule) |
+| Gate | Value | Enforced at | Scope | Config now? | Frontend |
+|---|---|---|---|---|---|
+| Min order size (general) | `minPositionSizeGeneral = 12 USDT` | ai | all | no (config `min_position_size` ignored here) | Yes, follows global `min_position_size`, surface in strategy config: Basic Rules |
+| Min order size (BTC/ETH) | `minPositionSizeBTCETH = 60 USDT` | ai | BTC/ETH | no | Yes, follows global `min_position_size`(Both general and BTC/ETH use the same value), surface in strategy config: Basic Rules |
+| Risk/reward floor | `≥ 3.0:1` (ignores `min_risk_reward_ratio`) | ai | all | no | Yes, follows global `min_risk_reward_ratio`, surface in strategy config: Advanced Settings |
+| Leverage cap | config tiers; auto-reduce if exceeded | ai | all | yes | No | 
+| Position-value cap | `equity × ratio` (+1% tol) | ai | all | yes | No |
+| SL/TP ordering | long: SL<TP · short: SL>TP | ai | all | no (rule) | No |
+| Invalid action reject | whitelist `open/close/hold/wait` | ai | all | no (rule) | No |
 
 ## D. Risk-control execution checks — `auto_trader_risk.go`, `auto_trader_orders.go`
 
-| Gate | Value | Enforced at | Scope | Config now? |
-|---|---|---|---|---|
-| Position-value cap (BTC/ETH+XYZ) | `equity × BTCETHMaxPositionValueRatio` (default 5.0) | open | BTC/ETH+XYZ | yes |
-| Position-value cap (altcoin) | `equity × AltcoinMaxPositionValueRatio` (default 1.0) | open | alt | yes |
-| Min position size (runtime) | `RiskControl.MinPositionSize` (default 12) | open | all | yes `min_position_size` |
-| Max positions | `RiskControl.MaxPositions` (default 3) | open | all | yes `max_positions` |
-| Duplicate-direction guard | reject open if same symbol+side held/scheduled | open | all | no (rule) |
-| Margin overhead factor | `marginOverheadFactor = 1.01` | open | all | no |
-| Taker fee rate | `takerFeeRate = 0.001` | open | all | no |
-| Size safety buffer | `positionSizeSafetyFactor = 0.98` | open | all | no |
-| Insufficient-margin auto-shrink | `maxAffordable = avail / (1.01/lev + 0.001)`; cap `×0.98` | open | all | no |
-| Drawdown profit-protection close | arm `+5%`, close `≥40%` giveback, check 1 min | close | all | no |
-| `applyAutopilotFullSizeOpen` | force vergex opens to `equity×ratio` @ config lev | open | vergex | via ratio/lev |
-| `ensureLongShortCoverage` (balanced top-up) | floor `|score| ≥ 0.4`, half `MaxPositions` long/short | cycle | vergex | score floor no; target via `max_positions` |
-| OI-liquidity candidate filter | drop if `OI value < 15M USDT` (skips positions & XYZ) | ai/context | all | no |
+| Gate | Value | Enforced at | Scope | Config now? | Frontend |
+|---|---|---|---|---|---|
+| Position-value cap (BTC/ETH+XYZ) | `equity × BTCETHMaxPositionValueRatio` (default 5.0) | open | BTC/ETH+XYZ | yes | Yes, follows global, already surfaced in strategy config: Basic Rules |
+| Position-value cap (altcoin) | `equity × AltcoinMaxPositionValueRatio` (default 1.0) | open | alt | yes | Yes, follows global, already surfaced in strategy config: Basic Rules |
+| Min position size (runtime) | `RiskControl.MinPositionSize` (default 12) | open | all | yes `min_position_size` | Yes, follows global, surface in strategy config: Basic Rules |
+| Max positions | `RiskControl.MaxPositions` (default 3) | open | all | yes `max_positions` | Yes, follows global, surface in strategy config: Basic Rules |
+| Duplicate-direction guard | reject open if same symbol+side held/scheduled | open | all | no (rule) | No |
+| Margin overhead factor | `marginOverheadFactor = 1.01` | open | all | no | No |
+| Taker fee rate | `takerFeeRate = 0.001` | open | all | no | No |
+| Size safety buffer | `positionSizeSafetyFactor = 0.98` | open | all | no | No |
+| Insufficient-margin auto-shrink | `maxAffordable = avail / (1.01/lev + 0.001)`; cap `×0.98` | open | all | no | No |
+| Drawdown profit-protection close | arm `+5%`, close `≥40%` giveback, check 1 min | close | all | no | No |
+| `applyAutopilotFullSizeOpen` | force vergex opens to `equity×ratio` @ config lev | open | vergex | via ratio/lev | No |
+| `ensureLongShortCoverage` (balanced top-up) | floor `|score| ≥ 0.4`, half `MaxPositions` long/short | cycle | vergex | score floor no; target via `max_positions` | No | No |
+| OI-liquidity candidate filter | drop if `OI value < 15M USDT` (skips positions & XYZ) | ai/context | all | no | Yes, surface in strategy config: Advanced Settings as a toggle (enabled by default) |
 
 ## E. Account-level / safe-mode gates
 

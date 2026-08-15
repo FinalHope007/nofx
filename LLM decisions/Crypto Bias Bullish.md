@@ -86,7 +86,8 @@ Briefly state whether Claw402 ranking, Signal Lab, heatmap and candles agree; if
 - JSON symbols must exactly match current candidates or existing positions; keep `xyz:` on XYZ instruments, and do not add `xyz:` or `USDT` to core crypto symbols.
 
 
---- User PrompTime: 2026-08-11 15:44:27 UTC | Period: #1 | Runtime: 0 minutes
+--- User Prompt ---
+Time: 2026-08-11 15:44:27 UTC | Period: #1 | Runtime: 0 minutes
 
 Account: Equity 29.27 | Balance 29.27 (100.0%) | PnL +0.00% | Margin 0.0% | Positions 0
 

@@ -212,7 +212,7 @@ var DataDictionary = map[string]map[string]BilingualFieldDef{
 			NameEN: "OI Change",
 			Unit:   "USDT & %",
 			DescZH: "OI change within 1 hour. Used to judge the real market capital flow direction",
-			DescEN: "OI change in 1 hour. Used to determine real capital flow direction",
+			DescEN: "Open Interest change. Used to determine real capital flow direction",
 		},
 	},
 }
