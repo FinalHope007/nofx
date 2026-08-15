@@ -11,6 +11,9 @@ import (
 
 // GetBalance gets account balance (with cache)
 func (t *FuturesTrader) GetBalance() (map[string]interface{}, error) {
+	// Refresh the server-time offset if stale (before the cache check).
+	t.ensureTimeSynced()
+
 	// First check if cache is valid
 	t.balanceCacheMutex.RLock()
 	if t.cachedBalance != nil && time.Since(t.balanceCacheTime) < t.cacheDuration {

@@ -59,6 +59,14 @@ type FuturesTrader struct {
 
 	// Cache validity period (15 seconds)
 	cacheDuration time.Duration
+
+	// Server-time offset re-sync state. Binance rejects signed requests whose
+	// timestamp drifts more than ~1s from its server clock; the offset captured
+	// at construction goes stale as the local clock drifts. ensureTimeSynced()
+	// refreshes it lazily on a timer to avoid the -1021 "timestamp ahead" error.
+	timeMutex        sync.Mutex
+	lastTimeSync     time.Time
+	timeSyncInterval time.Duration
 }
 
 // NewFuturesTrader creates futures trader
@@ -76,8 +84,10 @@ func NewFuturesTrader(apiKey, secretKey string, userId string) *FuturesTrader {
 	// Sync time to avoid "Timestamp ahead" error
 	syncBinanceServerTime(client)
 	trader := &FuturesTrader{
-		client:        client,
-		cacheDuration: 15 * time.Second, // 15-second cache
+		client:           client,
+		cacheDuration:    15 * time.Second, // 15-second cache
+		lastTimeSync:     time.Now(),       // the constructor just synced
+		timeSyncInterval: 10 * time.Minute, // re-sync server-time offset on this cadence
 	}
 
 	// Set dual-side position mode (Hedge Mode)
@@ -123,6 +133,25 @@ func syncBinanceServerTime(client *futures.Client) {
 	offset := now - serverTime
 	client.TimeOffset = offset
 	logger.Infof("⏱ Binance server time synced, offset %dms", offset)
+}
+
+// ensureTimeSynced refreshes the client's server-time offset when the last sync
+// is older than timeSyncInterval. It is safe for concurrent use and cheap when
+// fresh. Called before signed requests so the -1021 clock-skew error cannot
+// accumulate as the local clock drifts from Binance's server clock.
+func (t *FuturesTrader) ensureTimeSynced() {
+	t.timeMutex.Lock()
+	defer t.timeMutex.Unlock()
+
+	if t.timeSyncInterval <= 0 {
+		t.timeSyncInterval = 10 * time.Minute
+	}
+	if time.Since(t.lastTimeSync) < t.timeSyncInterval {
+		return
+	}
+
+	syncBinanceServerTime(t.client)
+	t.lastTimeSync = time.Now()
 }
 
 // Helper functions

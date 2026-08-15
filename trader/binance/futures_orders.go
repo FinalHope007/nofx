@@ -12,6 +12,10 @@ import (
 
 // OpenLong opens a long position
 func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
+	// Refresh the server-time offset if stale so signed requests don't trip
+	// Binance's -1021 "timestamp ahead" clock-skew check.
+	t.ensureTimeSynced()
+
 	// First cancel all pending orders for this symbol (clean up old stop-loss and take-profit orders)
 	if err := t.CancelAllOrders(symbol); err != nil {
 		logger.Infof("  ⚠ Failed to cancel old pending orders (may not have any): %v", err)
@@ -67,6 +71,10 @@ func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) 
 
 // OpenShort opens a short position
 func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int) (map[string]interface{}, error) {
+	// Refresh the server-time offset if stale so signed requests don't trip
+	// Binance's -1021 "timestamp ahead" clock-skew check.
+	t.ensureTimeSynced()
+
 	// First cancel all pending orders for this symbol (clean up old stop-loss and take-profit orders)
 	if err := t.CancelAllOrders(symbol); err != nil {
 		logger.Infof("  ⚠ Failed to cancel old pending orders (may not have any): %v", err)
@@ -122,6 +130,8 @@ func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int)
 
 // CloseLong closes a long position
 func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]interface{}, error) {
+	t.ensureTimeSynced()
+
 	// If quantity is 0, get current position quantity
 	if quantity == 0 {
 		positions, err := t.GetPositions()
@@ -177,6 +187,8 @@ func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]i
 
 // CloseShort closes a short position
 func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]interface{}, error) {
+	t.ensureTimeSynced()
+
 	// If quantity is 0, get current position quantity
 	if quantity == 0 {
 		positions, err := t.GetPositions()
@@ -233,6 +245,8 @@ func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]
 // CancelStopLossOrders cancels only stop-loss orders (doesn't affect take-profit orders)
 // Now uses both legacy API and new Algo Order API
 func (t *FuturesTrader) CancelStopLossOrders(symbol string) error {
+	t.ensureTimeSynced()
+
 	canceledCount := 0
 	var cancelErrors []error
 
@@ -385,6 +399,8 @@ func (t *FuturesTrader) CancelTakeProfitOrders(symbol string) error {
 // CancelAllOrders cancels all pending orders for this symbol
 // Now uses both legacy API and new Algo Order API
 func (t *FuturesTrader) CancelAllOrders(symbol string) error {
+	t.ensureTimeSynced()
+
 	// 1. Cancel all legacy orders
 	err := t.client.NewCancelAllOpenOrdersService().
 		Symbol(symbol).
@@ -535,6 +551,8 @@ func (t *FuturesTrader) GetOrderBook(symbol string, depth int) (bids, asks [][]f
 // CancelStopOrders cancels take-profit/stop-loss orders for this symbol (used to adjust TP/SL positions)
 // Now uses both legacy API and new Algo Order API (Binance migrated stop orders to Algo system)
 func (t *FuturesTrader) CancelStopOrders(symbol string) error {
+	t.ensureTimeSynced()
+
 	canceledCount := 0
 
 	// 1. Cancel legacy stop orders (for backward compatibility)
@@ -653,6 +671,8 @@ func (t *FuturesTrader) GetOpenOrders(symbol string) ([]types.OpenOrder, error) 
 // SetStopLoss sets stop-loss order using new Algo Order API
 // Binance has migrated stop orders to Algo Order system (error -4120 STOP_ORDER_SWITCH_ALGO)
 func (t *FuturesTrader) SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error {
+	t.ensureTimeSynced()
+
 	var side futures.SideType
 	var posSide futures.PositionSideType
 

@@ -12,6 +12,10 @@ import (
 
 // GetPositions gets all positions (with cache)
 func (t *FuturesTrader) GetPositions() ([]map[string]interface{}, error) {
+	// Refresh the server-time offset if stale (the cache below may hide the
+	// network call, so re-sync BEFORE the cache check).
+	t.ensureTimeSynced()
+
 	// First check if cache is valid
 	t.positionsCacheMutex.RLock()
 	if t.cachedPositions != nil && time.Since(t.positionsCacheTime) < t.cacheDuration {
@@ -287,4 +291,3 @@ func (t *FuturesTrader) FormatPrice(symbol string, price float64) (string, error
 	format := fmt.Sprintf("%%.%df", precision)
 	return fmt.Sprintf(format, price), nil
 }
-
