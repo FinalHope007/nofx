@@ -289,17 +289,38 @@ func (at *AutoTrader) countRecentOpenOrders(since time.Time) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	sinceMs := since.UTC().UnixMilli()
+	return countDistinctOpenEvents(orders, since.UTC().UnixMilli()), nil
+}
+
+// orderPositionKey returns a stable dedup key for a position-side regardless of
+// how the exchange labels it (positionSide may be empty on some adapters).
+func orderPositionKey(o *store.TraderOrder) string {
+	key := o.Symbol
+	if ps := strings.TrimSpace(o.PositionSide); ps != "" {
+		return key + "|" + strings.ToUpper(ps)
+	}
+	return key + "|" + strings.ToUpper(strings.TrimSpace(o.Side))
+}
+
+// countDistinctOpenEvents counts distinct (symbol, side) position-open events,
+// so a single position opened as multiple fills counts once.
+func countDistinctOpenEvents(orders []*store.TraderOrder, sinceMs int64) int {
+	seen := map[string]bool{}
 	count := 0
 	for _, order := range orders {
 		if order == nil || order.CreatedAt < sinceMs || isCanceledOrder(order) {
 			continue
 		}
-		if isOpenAction(order.OrderAction) {
+		if !isOpenAction(order.OrderAction) {
+			continue
+		}
+		key := orderPositionKey(order)
+		if !seen[key] {
+			seen[key] = true
 			count++
 		}
 	}
-	return count, nil
+	return count
 }
 
 func (at *AutoTrader) findRecentCloseOrder(symbol string, since time.Time) *store.TraderOrder {
@@ -309,15 +330,27 @@ func (at *AutoTrader) findRecentCloseOrder(symbol string, since time.Time) *stor
 		return nil
 	}
 	sinceMs := since.UTC().UnixMilli()
+	// Latest close for the symbol (deduped by position-side), so a multi-fill
+	// close is treated as a single close event.
+	var latest *store.TraderOrder
+	seen := map[string]bool{}
 	for _, order := range orders {
 		if order == nil || order.CreatedAt < sinceMs || isCanceledOrder(order) {
 			continue
 		}
-		if normalizedDecisionSymbol(order.Symbol) == symbol && isCloseAction(order.OrderAction) {
-			return order
+		if !(isCloseAction(order.OrderAction) && normalizedDecisionSymbol(order.Symbol) == symbol) {
+			continue
+		}
+		key := orderPositionKey(order)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if latest == nil || order.CreatedAt > latest.CreatedAt {
+			latest = order
 		}
 	}
-	return nil
+	return latest
 }
 
 func (at *AutoTrader) findRecentOpenOrder(symbol string, side string, since time.Time) *store.TraderOrder {
