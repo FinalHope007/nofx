@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ShieldAlert, ChevronRight, Loader2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { useStrategyDraft } from './draftStore'
 import { SCOPE_CARD_DEFS, toScopeUnit } from './scopeCatalog'
 import { strategyManagerApi } from './strategyApi'
@@ -242,12 +242,6 @@ export function ScopeStepPage() {
                   className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
                 />
               </div>
-              {def.provider === 'paid' && (
-                <div className="mt-2 flex items-center gap-1.5 text-[11px] text-nofx-danger">
-                  <ShieldAlert className="h-3 w-3" />
-                  Data source not configured / backend pending
-                </div>
-              )}
             </div>
           )
         })}
