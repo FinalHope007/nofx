@@ -1,4 +1,14 @@
 // Strategy Studio Types
+export interface StrategyVersion {
+  version: number
+  strategy_id: string
+  label: string
+  note: string
+  config: StrategyConfig
+  created_at: string
+  is_current: boolean
+}
+
 export interface Strategy {
   id: string;
   name: string;

@@ -1,16 +1,6 @@
-import type { Strategy, StrategyConfig } from '../../types/strategy'
+import type { Strategy, StrategyConfig, StrategyVersion } from '../../types/strategy'
 import { api } from '../../lib/api'
 import { strategyApi } from '../../lib/api/strategies'
-
-export interface StrategyVersion {
-  version: number
-  strategy_id: string
-  label: string
-  note: string
-  config: StrategyConfig
-  created_at: string
-  is_current: boolean
-}
 
 async function getStrategies(): Promise<Strategy[]> {
   return strategyApi.getStrategies()
@@ -38,60 +28,22 @@ async function deleteStrategy(id: string): Promise<void> {
   return strategyApi.deleteStrategy(id)
 }
 
-// ----- Version history (backend pending; local deterministic snapshot) -----
-
-function snapshotVersion(
-  strategyId: string,
-  version: number,
-  config: StrategyConfig,
-  label: string,
-  note: string,
-  isCurrent: boolean
-): StrategyVersion {
-  return {
-    version,
-    strategy_id: strategyId,
-    label,
-    note,
-    config,
-    created_at: new Date().toISOString(),
-    is_current: isCurrent,
-  }
-}
-
-export async function getVersions(
-  strategyId: string,
-  currentConfig: StrategyConfig
-): Promise<StrategyVersion[]> {
-  // Backend pending: expose the current config as a single v1 snapshot so the
-  // UI renders the full dropdown layout. Replace with GET /strategies/:id/versions.
-  const current = snapshotVersion(
-    strategyId,
-    1,
-    currentConfig,
-    'v1',
-    'Current configuration',
-    true
-  )
-  return [current]
+export async function getVersions(strategyId: string): Promise<StrategyVersion[]> {
+  return strategyApi.getVersions(strategyId)
 }
 
 export async function getVersion(
   strategyId: string,
-  version: number,
-  currentConfig: StrategyConfig
+  version: number
 ): Promise<StrategyVersion | null> {
-  const versions = await getVersions(strategyId, currentConfig)
-  return versions.find((v) => v.version === version) ?? versions[0] ?? null
+  return strategyApi.getVersion(strategyId, version)
 }
 
 export async function restoreVersion(
-  _strategyId: string,
-  _version: number
+  strategyId: string,
+  version: number
 ): Promise<{ ok: boolean }> {
-  // Backend pending: POST /strategies/:id/restore. Until implemented, report
-  // that no change happened so the UI can show a consistent "pending" state.
-  return { ok: false }
+  return strategyApi.restoreVersion(strategyId, version)
 }
 
 // ----- Live per-strategy stats from existing trader endpoints -----

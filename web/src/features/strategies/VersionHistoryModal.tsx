@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { X, RotateCcw, Loader2 } from 'lucide-react'
-import { strategyManagerApi, type StrategyVersion } from './strategyApi'
+import { strategyManagerApi } from './strategyApi'
 import { notify } from '../../lib/notify'
-import type { Strategy } from '../../types/strategy'
+import type { Strategy, StrategyVersion } from '../../types/strategy'
 
 export function VersionHistoryModal({
   strategy,
@@ -22,7 +22,7 @@ export function VersionHistoryModal({
     if (!isOpen) return
     setLoading(true)
     strategyManagerApi
-      .getVersions(strategy.id, strategy.config)
+      .getVersions(strategy.id)
       .then((list) => {
         setVersions(list)
         setSelected(list[0]?.version ?? null)

@@ -1,6 +1,7 @@
 import type {
   Strategy,
   StrategyConfig,
+  StrategyVersion,
 } from '../../types'
 import { API_BASE, httpClient } from './helpers'
 
@@ -68,5 +69,29 @@ export const strategyApi = {
     const result = await httpClient.post<Strategy>(`${API_BASE}/strategies/${strategyId}/duplicate`)
     if (!result.success) throw new Error('Failed to duplicate strategy')
     return result.data!
+  },
+
+  async getVersions(strategyId: string): Promise<StrategyVersion[]> {
+    const result = await httpClient.get<{ versions: StrategyVersion[] }>(
+      `${API_BASE}/strategies/${strategyId}/versions`
+    )
+    if (!result.success) throw new Error('Failed to fetch strategy versions')
+    return Array.isArray(result.data?.versions) ? result.data!.versions : []
+  },
+
+  async getVersion(strategyId: string, version: number): Promise<StrategyVersion | null> {
+    const result = await httpClient.get<StrategyVersion>(
+      `${API_BASE}/strategies/${strategyId}/versions/${version}`
+    )
+    if (!result.success) throw new Error('Failed to fetch strategy version')
+    return result.data ?? null
+  },
+
+  async restoreVersion(strategyId: string, version: number): Promise<{ ok: boolean }> {
+    const result = await httpClient.post<{ message: string }>(
+      `${API_BASE}/strategies/${strategyId}/restore`,
+      { version }
+    )
+    return { ok: result.success }
   },
 }
