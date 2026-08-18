@@ -35,8 +35,15 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		promptSections = store.PromptSectionsConfig{}
 	}
 
+	recentSection := renderRecentDecisions(e.DecisionContextConfig(), e.recentDecisions)
+
 	if e.usesVergexSignalPrompt() {
-		return e.buildVergexSystemPrompt(accountEquity, variant, lang, zh, singleSymbol, primarySymbol)
+		return e.buildVergexSystemPrompt(accountEquity, variant, lang, zh, singleSymbol, primarySymbol, recentSection)
+	}
+
+	// 0. Recent prior-cycle decisions (this trader only), when enabled.
+	if recentSection != "" {
+		sb.WriteString(recentSection)
 	}
 
 	// 0. Data Dictionary & Schema (ensure AI understands all fields)
@@ -195,12 +202,16 @@ func (e *StrategyEngine) usesVergexSignalPrompt() bool {
 		coinSource.VergexLimit > 0
 }
 
-func (e *StrategyEngine) buildVergexSystemPrompt(accountEquity float64, variant string, lang Language, zh bool, singleSymbol bool, primarySymbol string) string {
+func (e *StrategyEngine) buildVergexSystemPrompt(accountEquity float64, variant string, lang Language, zh bool, singleSymbol bool, primarySymbol string, recent string) string {
 	var sb strings.Builder
 	riskControl := e.config.RiskControl
 
 	writeVergexSchemaPrompt(&sb, zh)
 	sb.WriteString("\n\n---\n\n")
+
+	if recent != "" {
+		sb.WriteString(recent)
+	}
 
 	if zh {
 		sb.WriteString("# You are the NOFX Claw402 auto-trader\n\n")
@@ -1480,4 +1491,41 @@ func formatFloatSlice(values []float64) string {
 		strValues[i] = fmt.Sprintf("%.4f", v)
 	}
 	return "[" + strings.Join(strValues, ", ") + "]"
+}
+
+// renderRecentDecisions formats prior-cycle assistant responses for the system
+// prompt. Only the raw assistant response (RawResponse) is included — parsed
+// decisions are intentionally omitted so the LLM does not re-call past actions.
+// Structured = one delimited, timestamped entry per cycle; digest = a single
+// truncated snippet per cycle. Returns "" when disabled or no records.
+func renderRecentDecisions(cfg *store.DecisionContextConfig, records []*store.DecisionRecord) string {
+	if cfg == nil || !cfg.Enabled || len(records) == 0 {
+		return ""
+	}
+	n := cfg.RecentCount
+	if n <= 0 {
+		n = len(records)
+	}
+	if n > len(records) {
+		n = len(records)
+	}
+	var sb strings.Builder
+	sb.WriteString("# Recent Decisions\n\n")
+	sb.WriteString("These are the assistant responses from previous cycles of THIS trader. Use them for continuity; do NOT re-execute the same actions. Treat them as context only.\n\n")
+	if cfg.Mode == "digest" {
+		for _, r := range records[len(records)-n:] {
+			snippet := r.RawResponse
+			if len(snippet) > 200 {
+				snippet = snippet[:200] + "..."
+			}
+			snippet = strings.ReplaceAll(snippet, "\n", " ")
+			sb.WriteString(fmt.Sprintf("- [%s] %s\n", r.Timestamp.UTC().Format("2006-01-02 15:04:05"), snippet))
+		}
+	} else {
+		for _, r := range records[len(records)-n:] {
+			sb.WriteString(fmt.Sprintf("### Cycle %s\n\n%s\n\n", r.Timestamp.UTC().Format("2006-01-02 15:04:05"), r.RawResponse))
+		}
+	}
+	sb.WriteString("\n---\n\n")
+	return sb.String()
 }

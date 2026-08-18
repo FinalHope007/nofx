@@ -205,6 +205,8 @@ type StrategyEngine struct {
 	freeClient *vergex.Client
 	trending   *nofxos.FreeTrendingClient
 
+	recentDecisions []*store.DecisionRecord // prior-cycle assistant responses (per-trader)
+
 	exchange string // trader exchange used to pick the kline source
 }
 
@@ -270,6 +272,20 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 		freeClient:         freeVergex,
 		trending:           trendingClient,
 	}
+}
+
+// SetRecentDecisions sets prior-cycle decision records (this trader only) so
+// the prompt builder can feed them into the system prompt when configured.
+func (e *StrategyEngine) SetRecentDecisions(records []*store.DecisionRecord) {
+	e.recentDecisions = records
+}
+
+// DecisionContextConfig returns the strategy's decision_context config, or nil.
+func (e *StrategyEngine) DecisionContextConfig() *store.DecisionContextConfig {
+	if e == nil || e.config == nil {
+		return nil
+	}
+	return e.config.DecisionContext
 }
 
 func (e *StrategyEngine) usesHyperliquidNativeUniverse() bool {

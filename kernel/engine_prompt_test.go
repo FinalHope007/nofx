@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"nofx/provider/nofxos"
 	"nofx/store"
@@ -286,4 +287,32 @@ func containsCJK(text string) bool {
 		}
 	}
 	return false
+}
+
+func TestRenderRecentDecisionsStructured(t *testing.T) {
+	cfg := store.DecisionContextConfig{Enabled: true, RecentCount: 2, Mode: "structured"}
+	records := []*store.DecisionRecord{
+		{Timestamp: time.Now().Add(-2 * time.Hour), RawResponse: "decision A"},
+		{Timestamp: time.Now().Add(-1 * time.Hour), RawResponse: "decision B"},
+	}
+	out := renderRecentDecisions(&cfg, records)
+	if out == "" {
+		t.Fatal("expected non-empty recent-decisions section")
+	}
+	if !strings.Contains(out, "decision A") || !strings.Contains(out, "decision B") {
+		t.Fatalf("missing prior responses: %q", out)
+	}
+}
+
+func TestRenderRecentDecisionsDigestAndDisabled(t *testing.T) {
+	disabled := store.DecisionContextConfig{Enabled: false, RecentCount: 2, Mode: "structured"}
+	if out := renderRecentDecisions(&disabled, nil); out != "" {
+		t.Fatalf("expected empty when disabled, got %q", out)
+	}
+	digest := store.DecisionContextConfig{Enabled: true, RecentCount: 1, Mode: "digest"}
+	records := []*store.DecisionRecord{{Timestamp: time.Now(), RawResponse: "a very long response " + strings.Repeat("x", 200)}}
+	out := renderRecentDecisions(&digest, records)
+	if !strings.Contains(out, "a very long response") {
+		t.Fatalf("digest missing snippet: %q", out)
+	}
 }

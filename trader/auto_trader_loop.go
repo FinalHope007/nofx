@@ -755,6 +755,23 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		}
 	}
 
+	// 13. Feed prior-cycle decisions (this trader only) into the prompt builder
+	//     when the strategy enables decision_context.
+	if at.strategyEngine != nil && at.store != nil {
+		if dc := at.strategyEngine.DecisionContextConfig(); dc != nil && dc.Enabled {
+			recentCount := dc.RecentCount
+			if recentCount <= 0 {
+				recentCount = 8
+			}
+			records, err := at.store.Decision().GetLatestRecords(at.id, recentCount)
+			if err != nil {
+				at.logWarnf("⚠️ Failed to load recent decisions for decision_context: %v", err)
+			} else {
+				at.strategyEngine.SetRecentDecisions(records)
+			}
+		}
+	}
+
 	return ctx, nil
 }
 
