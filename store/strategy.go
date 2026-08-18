@@ -757,11 +757,12 @@ type StrategyConfig struct {
 	TradingStyle string `json:"trading_style,omitempty"`
 	// AI trading configuration fields are kept on the Go struct for engine
 	// compatibility, but JSON persistence nests them under ai_config.
-	CoinSource     CoinSourceConfig     `json:"-"`
-	Indicators     IndicatorConfig      `json:"-"`
-	CustomPrompt   string               `json:"-"`
-	RiskControl    RiskControlConfig    `json:"-"`
-	PromptSections PromptSectionsConfig `json:"-"`
+	CoinSource      CoinSourceConfig       `json:"-"`
+	Indicators      IndicatorConfig        `json:"-"`
+	CustomPrompt    string                 `json:"-"`
+	RiskControl     RiskControlConfig      `json:"-"`
+	PromptSections  PromptSectionsConfig   `json:"-"`
+	DecisionContext *DecisionContextConfig `json:"-"`
 
 	// Grid trading configuration (only used when StrategyType == "grid_trading")
 	GridConfig *GridStrategyConfig `json:"grid_config,omitempty"`
@@ -774,11 +775,20 @@ type StrategyConfig struct {
 
 // AIStrategyConfig contains fields only used by AI trading strategies.
 type AIStrategyConfig struct {
-	CoinSource     CoinSourceConfig     `json:"coin_source"`
-	Indicators     IndicatorConfig      `json:"indicators"`
-	CustomPrompt   string               `json:"custom_prompt,omitempty"`
-	RiskControl    RiskControlConfig    `json:"risk_control"`
-	PromptSections PromptSectionsConfig `json:"prompt_sections,omitempty"`
+	CoinSource      CoinSourceConfig       `json:"coin_source"`
+	Indicators      IndicatorConfig        `json:"indicators"`
+	CustomPrompt    string                 `json:"custom_prompt,omitempty"`
+	RiskControl     RiskControlConfig      `json:"risk_control"`
+	PromptSections  PromptSectionsConfig   `json:"prompt_sections,omitempty"`
+	DecisionContext *DecisionContextConfig `json:"decision_context,omitempty"`
+}
+
+// DecisionContextConfig controls how recent market/trade context is fed into the
+// model prompt.
+type DecisionContextConfig struct {
+	Enabled     bool   `json:"enabled"`
+	RecentCount int    `json:"recent_count"`
+	Mode        string `json:"mode"`
 }
 
 // PublishStrategyConfig contains settings shared by all strategy types.
@@ -811,11 +821,12 @@ func (c StrategyConfig) MarshalJSON() ([]byte, error) {
 		out.GridConfig = c.GridConfig
 	} else {
 		out.AIConfig = &AIStrategyConfig{
-			CoinSource:     c.CoinSource,
-			Indicators:     c.Indicators,
-			CustomPrompt:   c.CustomPrompt,
-			RiskControl:    c.RiskControl,
-			PromptSections: c.PromptSections,
+			CoinSource:      c.CoinSource,
+			Indicators:      c.Indicators,
+			CustomPrompt:    c.CustomPrompt,
+			RiskControl:     c.RiskControl,
+			PromptSections:  c.PromptSections,
+			DecisionContext: c.DecisionContext,
 		}
 	}
 
@@ -832,11 +843,12 @@ func (c *StrategyConfig) UnmarshalJSON(data []byte) error {
 		GridConfig    *GridStrategyConfig    `json:"grid_config"`
 		PublishConfig *PublishStrategyConfig `json:"publish_config"`
 
-		CoinSource     *CoinSourceConfig     `json:"coin_source"`
-		Indicators     *IndicatorConfig      `json:"indicators"`
-		CustomPrompt   *string               `json:"custom_prompt"`
-		RiskControl    *RiskControlConfig    `json:"risk_control"`
-		PromptSections *PromptSectionsConfig `json:"prompt_sections"`
+		CoinSource      *CoinSourceConfig      `json:"coin_source"`
+		Indicators      *IndicatorConfig       `json:"indicators"`
+		CustomPrompt    *string                `json:"custom_prompt"`
+		RiskControl     *RiskControlConfig     `json:"risk_control"`
+		PromptSections  *PromptSectionsConfig  `json:"prompt_sections"`
+		DecisionContext *DecisionContextConfig `json:"decision_context"`
 	}
 
 	var raw rawStrategyConfig
@@ -855,6 +867,7 @@ func (c *StrategyConfig) UnmarshalJSON(data []byte) error {
 		c.CustomPrompt = raw.AIConfig.CustomPrompt
 		c.RiskControl = raw.AIConfig.RiskControl
 		c.PromptSections = raw.AIConfig.PromptSections
+		c.DecisionContext = raw.AIConfig.DecisionContext
 	} else {
 		if raw.CoinSource != nil {
 			c.CoinSource = *raw.CoinSource
@@ -870,6 +883,9 @@ func (c *StrategyConfig) UnmarshalJSON(data []byte) error {
 		}
 		if raw.PromptSections != nil {
 			c.PromptSections = *raw.PromptSections
+		}
+		if raw.DecisionContext != nil {
+			c.DecisionContext = raw.DecisionContext
 		}
 	}
 
