@@ -46,13 +46,12 @@ export async function restoreVersion(
   return strategyApi.restoreVersion(strategyId, version)
 }
 
-// ----- Live per-strategy stats from existing trader endpoints -----
+// ----- Live per-strategy stats from the backend stats endpoint -----
 
 export interface StrategyStats {
   aum: number
   symbols: string[]
   navPoints: { timestamp: string; total_equity: number }[]
-  // Aggregation backend pending for these:
   sevenDayYield: number | null
   sharpe: number | null
   maxDd: number | null
@@ -70,59 +69,17 @@ export async function getRunningTradersForStrategy(
 export async function getStrategyStats(
   strategyId: string
 ): Promise<StrategyStats> {
-  const traders = await api.getTraders(true)
-  const linked = traders.filter((t) => t.strategy_id === strategyId)
-  const ids = linked.map((t) => t.trader_id)
-
-  if (ids.length === 0) {
-    return {
-      aum: 0,
-      symbols: [],
-      navPoints: [],
-      sevenDayYield: null,
-      sharpe: null,
-      maxDd: null,
-    }
-  }
-
-  const [accounts, positions, equityBatch] = await Promise.all([
-    Promise.all(ids.map((id) => api.getAccount(id, true).catch(() => null))),
-    Promise.all(ids.map((id) => api.getPositions(id, true).catch(() => null))),
-    api.getEquityHistoryBatch(ids).catch(() => null),
-  ])
-
-  const aum = accounts.reduce((sum, a) => sum + (a?.total_equity ?? 0), 0)
-  const symbols = Array.from(
-    new Set(
-      positions
-        .flat()
-        .map((p) => p?.symbol)
-        .filter((s): s is string => Boolean(s))
-    )
-  )
-  const histories = equityBatch?.histories ?? {}
-  let navPoints: { timestamp: string; total_equity: number }[] = []
-  if (ids.length > 0) {
-    const seriesByTs = new Map<string, number>()
-    for (const id of ids) {
-      for (const point of histories[id] ?? []) {
-        const t = point.timestamp
-        seriesByTs.set(t, (seriesByTs.get(t) ?? 0) + (point.total_equity ?? 0))
-      }
-    }
-    navPoints = Array.from(seriesByTs, ([timestamp, total_equity]) => ({
-      timestamp,
-      total_equity,
-    })).sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-  }
-
+  const d = await strategyApi.getStrategyStats(strategyId)
   return {
-    aum,
-    symbols,
-    navPoints,
-    sevenDayYield: null,
-    sharpe: null,
-    maxDd: null,
+    aum: d.aum ?? 0,
+    symbols: d.symbols ?? [],
+    navPoints: (d.nav_points ?? []).map((p) => ({
+      timestamp: p.timestamp,
+      total_equity: p.total_equity,
+    })),
+    sevenDayYield: d.seven_day_yield ?? null,
+    sharpe: d.sharpe ?? null,
+    maxDd: d.max_drawdown ?? null,
   }
 }
 

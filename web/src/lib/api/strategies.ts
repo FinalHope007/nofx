@@ -94,4 +94,21 @@ export const strategyApi = {
     )
     return { ok: result.success }
   },
+
+  async getStrategyStats(strategyId: string): Promise<StrategyStatsResponse> {
+    const result = await httpClient.get<StrategyStatsResponse>(
+      `${API_BASE}/strategies/${strategyId}/stats`
+    )
+    if (!result.success) throw new Error('Failed to fetch strategy stats')
+    return result.data!
+  },
+}
+
+interface StrategyStatsResponse {
+  aum: number
+  symbols: string[]
+  nav_points: { timestamp: string; total_equity: number }[]
+  seven_day_yield: number | null
+  sharpe: number | null
+  max_drawdown: number | null
 }
