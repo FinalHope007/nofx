@@ -33,6 +33,7 @@ Thumbs.db
 
 # 环境变量
 .env
+.env.arm64
 config.json
 configbak.json
 
