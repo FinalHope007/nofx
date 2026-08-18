@@ -18,8 +18,7 @@ export interface StrategyEditorForm {
   selectedTimeframes: string[]
   excludedCoins: string[]
   decisionContext: DecisionContextConfig
-  scopeUnits: ScopeUnit[]
-  scopeMode: 'overlap' | 'union'
+  scopeUnit: ScopeUnit | null
   enableAI500Data?: boolean
   enableOIData?: boolean
   enableNetflowData?: boolean
@@ -70,35 +69,21 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-export function buildCoinSource(
-  units: ScopeUnit[],
-  mode: 'overlap' | 'union' = 'union'
-): CoinSourceConfig {
-  if (units.length > 1) {
+export function buildCoinSource(unit: ScopeUnit | null): CoinSourceConfig {
+  if (!unit) {
     return {
-      source_type: 'custom',
-      scope_mode: mode,
-      custom_scope: { scope_units: units, mode },
+      source_type: 'static',
       static_coins: [],
       excluded_coins: [],
-      use_ai500: false,
-      ai500_limit: 0,
-      use_oi_top: false,
-      oi_top_limit: 0,
-      use_oi_low: false,
-      oi_low_limit: 0,
-      use_hyper_all: false,
-      use_hyper_main: false,
-      hyper_main_limit: 0,
-      vergex_limit: 0,
+      use_ai500: false, ai500_limit: 0,
+      use_oi_top: false, oi_top_limit: 0,
+      use_oi_low: false, oi_low_limit: 0,
+      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
     }
   }
-
-  const unit = units[0]
-  if (unit?.source_type === 'hyper_rank') {
+  if (unit.source_type === 'hyper_rank') {
     return {
       source_type: 'hyper_rank',
-      scope_mode: mode,
       hyper_rank_category: unit.category,
       hyper_rank_direction: unit.variant as 'gainers' | 'losers' | 'volume' | undefined || 'gainers',
       hyper_rank_limit: clamp(unit.limit, 1, 50),
@@ -110,10 +95,9 @@ export function buildCoinSource(
     }
   }
 
-  if (unit?.source_type === 'ai500') {
+  if (unit.source_type === 'ai500') {
     return {
       source_type: 'ai500',
-      scope_mode: mode,
       use_ai500: true,
       ai500_limit: clamp(unit.limit, 1, 50),
       static_coins: [],
@@ -128,11 +112,10 @@ export function buildCoinSource(
     }
   }
 
-  if (unit?.source_type === 'nofxos_oi') {
+  if (unit.source_type === 'nofxos_oi') {
     const isTop = unit.variant === 'top'
     return {
       source_type: isTop ? 'oi_top' : 'oi_low',
-      scope_mode: mode,
       use_oi_top: isTop,
       oi_top_limit: isTop ? clamp(unit.limit, 1, 50) : 0,
       use_oi_low: !isTop,
@@ -143,11 +126,10 @@ export function buildCoinSource(
     }
   }
 
-  if (unit?.source_type === 'nofxos_netflow') {
+  if (unit.source_type === 'nofxos_netflow') {
     const isInflow = unit.variant !== 'outflow'
     return {
       source_type: isInflow ? 'netflow_top' : 'netflow_low',
-      scope_mode: mode,
       netflow_limit: clamp(unit.limit, 1, 50),
       static_coins: [], excluded_coins: [],
       use_ai500: false, ai500_limit: 0,
@@ -157,11 +139,10 @@ export function buildCoinSource(
     }
   }
 
-  if (unit?.source_type === 'nofxos_price') {
+  if (unit.source_type === 'nofxos_price') {
     const isGainers = unit.variant !== 'losers'
     return {
       source_type: isGainers ? 'price_top' : 'price_low',
-      scope_mode: mode,
       price_limit: clamp(unit.limit, 1, 50),
       static_coins: [], excluded_coins: [],
       use_ai500: false, ai500_limit: 0,
@@ -171,11 +152,10 @@ export function buildCoinSource(
     }
   }
 
-  if (unit?.source_type === 'vergex') {
+  if (unit.source_type === 'vergex') {
     const marketType = unit.category === 'stock' ? 'hip3_perp' : 'core_perp'
     return {
       source_type: 'vergex_signal',
-      scope_mode: mode,
       vergex_limit: clamp(unit.limit, 1, 50),
       vergex_market_type: marketType,
       vergex_direction: unit.variant,
@@ -187,12 +167,10 @@ export function buildCoinSource(
     }
   }
 
-  // Any other paid/provider-pending source: mark custom with the units but
-  // fall back to a safe static/empty pool so runtime never errors today.
+  // Any other paid/provider-pending source: fall back to a safe static/empty
+  // pool so runtime never errors today.
   return {
-    source_type: 'custom',
-    scope_mode: mode,
-    custom_scope: { scope_units: units, mode },
+    source_type: 'static',
     static_coins: [],
     excluded_coins: [],
     use_ai500: false,
@@ -269,7 +247,7 @@ export function buildStrategyConfig(form: StrategyEditorForm): StrategyConfig {
     language: 'en',
     trading_style: form.tradingStyle,
     ai_config: {
-      coin_source: buildCoinSource(form.scopeUnits, form.scopeMode),
+      coin_source: buildCoinSource(form.scopeUnit),
       indicators: {
         klines: {
           primary_timeframe: form.selectedTimeframes[0] ?? '15m',

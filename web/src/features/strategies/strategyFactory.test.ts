@@ -17,16 +17,17 @@ const freeUnit = (variant: 'gainers' | 'losers' | 'volume'): ScopeUnit => ({
 })
 
 describe('strategy factory', () => {
-  it('maps a single free scope to its concrete coin source', () => {
-    const cs = buildCoinSource([freeUnit('gainers')])
+  it('maps a single free scope to its concrete coin source without scope_mode/custom_scope', () => {
+    const cs = buildCoinSource(freeUnit('gainers'))
     expect(cs.source_type).toBe('hyper_rank')
     expect(cs.hyper_rank_category).toBe('crypto')
     expect(cs.hyper_rank_direction).toBe('gainers')
     expect(cs.hyper_rank_limit).toBe(10)
-    expect(cs.scope_mode).toBe('union')
+    expect('scope_mode' in cs).toBe(false)
+    expect('custom_scope' in cs).toBe(false)
   })
 
-  it('maps a single paid scope to its own concrete source', () => {
+  it('maps a single paid scope to vergex_signal', () => {
     const paid: ScopeUnit = {
       id: 'crypto-bias-bull',
       category: 'crypto',
@@ -35,62 +36,15 @@ describe('strategy factory', () => {
       label: 'Bias Radar (Bullish)',
       provider: 'paid',
     }
-    const cs = buildCoinSource([paid])
+    const cs = buildCoinSource(paid)
     expect(cs.source_type).toBe('vergex_signal')
-    expect(cs.custom_scope).toBeUndefined()
+    expect('custom_scope' in cs).toBe(false)
   })
 
-  it('uses custom source_type when more than one scope is selected', () => {
-    const cs = buildCoinSource([freeUnit('gainers'), freeUnit('losers')])
-    expect(cs.source_type).toBe('custom')
-    expect(cs.custom_scope?.scope_units).toHaveLength(2)
-    expect(cs.custom_scope?.mode).toBe('union')
-  })
-
-  it('persists overlap mode on a multi-scope custom source', () => {
-    const cs = buildCoinSource(
-      [freeUnit('gainers'), freeUnit('losers')],
-      'overlap'
-    )
-    expect(cs.source_type).toBe('custom')
-    expect(cs.scope_mode).toBe('overlap')
-    expect(cs.custom_scope?.mode).toBe('overlap')
-  })
-
-  it('persists overlap mode on a single concrete scope', () => {
-    const cs = buildCoinSource([freeUnit('gainers')], 'overlap')
-    expect(cs.source_type).toBe('hyper_rank')
-    expect(cs.scope_mode).toBe('overlap')
-    expect(cs.custom_scope).toBeUndefined()
-  })
-
-  it('buildStrategyConfig passes scopeMode into the coin source for a multi-scope form', () => {
-    const cfg = buildStrategyConfig({
-      name: 'Overlap',
-      custom_prompt: '',
-      scan_interval_minutes: 15,
-      btcEthMaxLeverage: 5,
-      altcoinMaxLeverage: 5,
-      btcEthPositionRatio: 5,
-      altcoinPositionRatio: 5,
-      isCrossMargin: true,
-      selectedTimeframes: ['15m'],
-      excludedCoins: [],
-      decisionContext: { enabled: true, recent_count: 8, mode: 'structured' },
-      scopeUnits: [freeUnit('gainers'), freeUnit('losers')],
-      scopeMode: 'overlap',
-      maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
-      maxMarginUsage: 1.0, minConfidence: 78,
-      enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
-      maxOpensPerHour: 3, maxOpensPerCycle: 2,
-      minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240,
-      earlyCloseStopLossBypassPct: -3.0, earlyCloseTakeProfitBypassPct: 8.0,
-      noiseCloseLossFloorPct: -2.0, noiseCloseProfitCeilingPct: 3.0,
-    })
-    const cs = cfg.ai_config?.coin_source
-    expect(cs?.source_type).toBe('custom')
-    expect(cs?.scope_mode).toBe('overlap')
-    expect(cs?.custom_scope?.mode).toBe('overlap')
+  it('falls back to an empty static pool when no scope is selected', () => {
+    const cs = buildCoinSource(null)
+    expect(cs.source_type).toBe('static')
+    expect(cs.static_coins).toEqual([])
   })
 
   it('writes the four leverage/notional controls into risk control', () => {
@@ -113,7 +67,7 @@ describe('strategy factory', () => {
       btcEthPositionRatio: 5, altcoinPositionRatio: 5,
       isCrossMargin: true, selectedTimeframes: ['15m'], excludedCoins: [],
       decisionContext: { enabled: true, recent_count: 8, mode: 'structured' },
-      scopeUnits: [freeUnit('gainers')], scopeMode: 'union',
+      scopeUnit: freeUnit('gainers'),
       enableAI500Data: true, enableOIData: true, enableNetflowData: true,
       enablePriceData: true, dataDurations: ['15m', '1h'],
       enableEma: true, enableMacd: true, enableRsi: true,
@@ -149,8 +103,7 @@ describe('strategy factory', () => {
       selectedTimeframes: ['15m'],
       excludedCoins: ['SAMECOIN'],
       decisionContext: { enabled: true, recent_count: 8, mode: 'digest' },
-      scopeUnits: [freeUnit('gainers')],
-      scopeMode: 'union',
+      scopeUnit: freeUnit('gainers'),
       maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
       maxMarginUsage: 1.0, minConfidence: 78,
       enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,

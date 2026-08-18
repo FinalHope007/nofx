@@ -69,7 +69,7 @@ export function EditorStepPage() {
     useState(3.0)
   const [saving, setSaving] = useState(false)
 
-  const initialSources = defaultDataSources(scope.units)
+  const initialSources = defaultDataSources(scope)
   const [enableAI500Data, setEnableAI500Data] = useState(
     initialSources.enableAI500Data
   )
@@ -148,7 +148,7 @@ export function EditorStepPage() {
           setEnableNetflowData(ind?.enable_netflow_data ?? false)
           setEnablePriceData(ind?.enable_price_data ?? false)
         } else {
-          const defaults = defaultDataSources(scope.units)
+          const defaults = defaultDataSources(scope)
           setEnableAI500Data(defaults.enableAI500Data)
           setEnableOIData(defaults.enableOIData)
           setEnableNetflowData(defaults.enableNetflowData)
@@ -172,7 +172,7 @@ export function EditorStepPage() {
         setLoading(false)
       }
     })()
-  }, [mode, strategyId, token, scope.units])
+  }, [mode, strategyId, token, scope])
 
   const backPath =
     mode === 'create'
@@ -217,7 +217,7 @@ export function EditorStepPage() {
       notify.error('Strategy name is required')
       return
     }
-    if (mode === 'edit' && scope.units.length === 0) {
+    if (mode === 'edit' && scope === null) {
       notify.error('No trading scope selected. Finish step 1 before saving.')
       return
     }
@@ -269,14 +269,13 @@ export function EditorStepPage() {
         earlyCloseTakeProfitBypassPct,
         noiseCloseLossFloorPct,
         noiseCloseProfitCeilingPct,
-        scopeUnits: scope.units,
-        scopeMode: scope.mode,
+        scopeUnit: scope,
       })
 
       if (mode === 'create') {
         await strategyManagerApi.createStrategy({
           name: name.trim(),
-          description: `Strategy using ${scope.units.length} scope(s)`,
+          description: `Strategy using ${scope ? 1 : 0} scope(s)`,
           config,
         })
         notify.success('Strategy created')

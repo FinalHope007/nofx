@@ -7,8 +7,8 @@ const baseForm: StrategyEditorForm = {
   btcEthMaxLeverage: 5, altcoinMaxLeverage: 5,
   btcEthPositionRatio: 5, altcoinPositionRatio: 1,
   isCrossMargin: true, selectedTimeframes: ['15m'], excludedCoins: [],
-  decisionContext: { mode: 'structured', count: 10 },
-  scopeUnits: [], scopeMode: 'union',
+  decisionContext: { enabled: false, recent_count: 8, mode: 'structured' },
+  scopeUnit: null,
   // Section A / throttle form fields (all new required fields):
   maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
   maxMarginUsage: 1.0, minConfidence: 78,

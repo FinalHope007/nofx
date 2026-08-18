@@ -120,9 +120,6 @@ export interface CoinSourceConfig {
     | 'hyper_main'
     | 'hyper_rank'
     | 'vergex_signal'
-    | 'custom'
-  custom_scope?: CustomScopeConfig
-  scope_mode?: 'overlap' | 'union'
   static_coins?: string[];
   excluded_coins?: string[];   // List of excluded coins
   use_ai500: boolean;
@@ -282,13 +279,6 @@ export interface ScopeUnit {
   limit: number
   label: string
   provider: 'free' | 'paid'
-}
-
-// The full multi-scope selection plus Overlap/Union mode. Stored on the
-// strategy so the future backend can resolve candidate pools in AND/OR form.
-export interface CustomScopeConfig {
-  scope_units: ScopeUnit[]
-  mode: 'overlap' | 'union'
 }
 
 // Runtime prompt-context knobs. Backend prompt-builder wiring is pending;

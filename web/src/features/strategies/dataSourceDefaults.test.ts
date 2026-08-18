@@ -20,8 +20,8 @@ const price = unit('nofxos_price')
 const vergex = unit('vergex')
 
 describe('defaultDataSources', () => {
-  it('enables AI500 data when an ai500 unit is selected', () => {
-    expect(defaultDataSources([ai500])).toEqual({
+  it('enables AI500 data when an ai500 scope is selected', () => {
+    expect(defaultDataSources(ai500)).toEqual({
       enableAI500Data: true,
       enableOIData: false,
       enableNetflowData: false,
@@ -29,20 +29,20 @@ describe('defaultDataSources', () => {
     })
   })
 
-  it('enables OI data when a nofxos_oi unit is selected', () => {
-    expect(defaultDataSources([oi]).enableOIData).toBe(true)
+  it('enables OI data when a nofxos_oi scope is selected', () => {
+    expect(defaultDataSources(oi).enableOIData).toBe(true)
   })
 
-  it('enables netflow data when a nofxos_netflow unit is selected', () => {
-    expect(defaultDataSources([netflow]).enableNetflowData).toBe(true)
+  it('enables netflow data when a nofxos_netflow scope is selected', () => {
+    expect(defaultDataSources(netflow).enableNetflowData).toBe(true)
   })
 
-  it('enables price data when a nofxos_price unit is selected', () => {
-    expect(defaultDataSources([price]).enablePriceData).toBe(true)
+  it('enables price data when a nofxos_price scope is selected', () => {
+    expect(defaultDataSources(price).enablePriceData).toBe(true)
   })
 
-  it('disables all four toggles for a vergex unit (Bias Radar exclusion)', () => {
-    expect(defaultDataSources([vergex])).toEqual({
+  it('disables all four toggles for a vergex scope (Bias Radar exclusion)', () => {
+    expect(defaultDataSources(vergex)).toEqual({
       enableAI500Data: false,
       enableOIData: false,
       enableNetflowData: false,
@@ -50,17 +50,8 @@ describe('defaultDataSources', () => {
     })
   })
 
-  it('ORs the mapped sources across mixed units', () => {
-    expect(defaultDataSources([ai500, oi, price])).toEqual({
-      enableAI500Data: true,
-      enableOIData: true,
-      enableNetflowData: false,
-      enablePriceData: true,
-    })
-  })
-
-  it('disables all toggles when no units are selected', () => {
-    expect(defaultDataSources([])).toEqual({
+  it('disables all toggles when no scope is selected', () => {
+    expect(defaultDataSources(null)).toEqual({
       enableAI500Data: false,
       enableOIData: false,
       enableNetflowData: false,

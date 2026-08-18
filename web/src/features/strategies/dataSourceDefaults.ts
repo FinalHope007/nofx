@@ -1,15 +1,15 @@
 import type { ScopeUnit } from '../../types/strategy'
 
-export function defaultDataSources(units: ScopeUnit[]): {
+export function defaultDataSources(scope: ScopeUnit | null): {
   enableAI500Data: boolean
   enableOIData: boolean
   enableNetflowData: boolean
   enablePriceData: boolean
 } {
   return {
-    enableAI500Data: units.some((u) => u.source_type === 'ai500'),
-    enableOIData: units.some((u) => u.source_type === 'nofxos_oi'),
-    enableNetflowData: units.some((u) => u.source_type === 'nofxos_netflow'),
-    enablePriceData: units.some((u) => u.source_type === 'nofxos_price'),
+    enableAI500Data: scope?.source_type === 'ai500',
+    enableOIData: scope?.source_type === 'nofxos_oi',
+    enableNetflowData: scope?.source_type === 'nofxos_netflow',
+    enablePriceData: scope?.source_type === 'nofxos_price',
   }
 }

@@ -11,23 +11,17 @@ import { notify } from '../../lib/notify'
 
 type Mode = 'create' | 'edit'
 
-function cardActive(units: ScopeUnit[], def: ScopeCardDef): boolean {
-  return units.some((u) => u.id === def.id)
+function cardActive(scope: ScopeUnit | null, def: ScopeCardDef): boolean {
+  return scope?.id === def.id
 }
 
-function cardUnit(
-  units: ScopeUnit[],
-  def: ScopeCardDef,
-  limit: number
-): ScopeUnit {
-  const existing = units.find((u) => u.id === def.id)
-  return toScopeUnit(def, existing?.limit ?? limit)
+function cardUnit(def: ScopeCardDef, limit: number): ScopeUnit {
+  return toScopeUnit(def, limit)
 }
 
 function matchConcreteScope(
   cs: import('../../types/strategy').CoinSourceConfig
 ): ScopeUnit | null {
-  if (cs.source_type === 'custom') return null
   // The persisted config uses the backend's source_type union (e.g.
   // 'vergex_signal'), while scope cards carry the wizard's scope source_type
   // (e.g. 'vergex'). Translate so the card de/reserialization round-trips so a
@@ -50,13 +44,7 @@ export function ScopeStepPage() {
   const params = useParams<{ id?: string }>()
   const mode: Mode = params.id ? 'edit' : 'create'
   const strategyId = params.id
-  const {
-    scope,
-    mergeScopeUnit,
-    removeScopeUnit,
-    setScopeMode,
-    setScopeUnits,
-  } = useStrategyDraft()
+  const { scope, setScope, clearScope } = useStrategyDraft()
   const [topN, setTopN] = useState<Record<string, number>>({})
   const [category, setCategory] = useState<'crypto' | 'stock'>('crypto')
   const [loading, setLoading] = useState(mode === 'edit')
@@ -79,30 +67,11 @@ export function ScopeStepPage() {
         const strategy = await api.getStrategy(strategyId)
         const coinSource = strategy.config.ai_config?.coin_source
         if (!coinSource) return
-        const seededUnits =
-          coinSource.source_type === 'custom' && coinSource.custom_scope
-            ? coinSource.custom_scope.scope_units
-            : null
-
-        if (seededUnits && seededUnits.length > 0) {
-          setScopeUnits(seededUnits)
-          setScopeMode(coinSource.custom_scope?.mode ?? scope.mode)
-          const nextTopN: Record<string, number> = {}
-          seededUnits.forEach((u) => {
-            nextTopN[u.id] = u.limit
-          })
-          setTopN(nextTopN)
-          setCategory(seededUnits[0].category)
-          return
-        }
 
         const unit = matchConcreteScope(coinSource)
         if (unit) {
-          setScopeUnits([unit])
+          setScope(unit)
           setCategory(unit.category)
-          if (coinSource.scope_mode) {
-            setScopeMode(coinSource.scope_mode)
-          }
           setTopN({ [unit.id]: unit.limit })
         }
       } catch (err) {
@@ -123,20 +92,18 @@ export function ScopeStepPage() {
   const backPath = '/strategy'
 
   const toggleCard = (def: ScopeCardDef) => {
-    if (cardActive(scope.units, def)) {
-      removeScopeUnit(def.id)
+    if (cardActive(scope, def)) {
+      clearScope()
     } else {
-      mergeScopeUnit(
-        cardUnit(scope.units, def, topN[def.id] ?? def.defaultLimit)
-      )
+      setScope(cardUnit(def, topN[def.id] ?? def.defaultLimit))
     }
   }
 
   const updateLimit = (def: ScopeCardDef, raw: number) => {
     const limit = Math.min(50, Math.max(1, raw || 1))
     setTopN((prev) => ({ ...prev, [def.id]: limit }))
-    if (cardActive(scope.units, def)) {
-      mergeScopeUnit(cardUnit(scope.units, def, limit))
+    if (cardActive(scope, def)) {
+      setScope(cardUnit(def, limit))
     }
   }
 
@@ -206,15 +173,6 @@ export function ScopeStepPage() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() =>
-            setScopeMode(scope.mode === 'union' ? 'overlap' : 'union')
-          }
-          className="rounded-lg border border-nofx-gold/30 bg-nofx-gold/10 px-4 py-2 text-sm font-medium text-nofx-gold"
-        >
-          {scope.mode === 'union' ? 'Union' : 'Overlap'}
-        </button>
       </div>
 
       <div className="mb-6 flex gap-2">
@@ -236,7 +194,7 @@ export function ScopeStepPage() {
 
       <div className="grid gap-3 sm:grid-cols-2">
         {cards.map((def) => {
-          const active = cardActive(scope.units, def)
+          const active = cardActive(scope, def)
           return (
             <div
               key={def.id}
@@ -298,7 +256,7 @@ export function ScopeStepPage() {
       <div className="mt-8 flex justify-end">
         <button
           type="button"
-          disabled={scope.units.length === 0}
+          disabled={scope === null}
           onClick={() => navigate(nextPath)}
           className="inline-flex items-center gap-2 rounded-lg bg-nofx-gold px-5 py-2 text-sm font-semibold text-nofx-bg disabled:cursor-not-allowed disabled:opacity-40"
         >
