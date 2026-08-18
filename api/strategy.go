@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"nofx/kernel"
 	"nofx/logger"
@@ -12,6 +13,7 @@ import (
 	_ "nofx/mcp/payment"
 	_ "nofx/mcp/provider"
 	"nofx/store"
+	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -895,4 +897,164 @@ func (s *Server) handleRestoreStrategyVersion(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Strategy restored to v%d", v.Version), "version": v.Version})
+}
+
+// navPointDTO is a single point on the merged NAV curve.
+type navPointDTO struct {
+	Timestamp   time.Time `json:"timestamp"`
+	TotalEquity float64   `json:"total_equity"`
+}
+
+// strategyStatsDTO is the aggregate stats payload for a strategy.
+type strategyStatsDTO struct {
+	AUM           float64       `json:"aum"`
+	Symbols       []string      `json:"symbols"`
+	NavPoints     []navPointDTO `json:"nav_points"`
+	SevenDayYield *float64      `json:"seven_day_yield"`
+	Sharpe        *float64      `json:"sharpe"`
+	MaxDrawdown   *float64      `json:"max_drawdown"`
+}
+
+// handleGetStrategyStats returns aggregate stats for a strategy by merging the
+// equity curves of all linked traders over the last 7 days.
+func (s *Server) handleGetStrategyStats(c *gin.Context) {
+	userID := c.GetString("user_id")
+	strategyID := c.Param("id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	if _, err := s.store.Strategy().Get(userID, strategyID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Strategy not found"})
+		return
+	}
+	traders, err := s.store.Trader().List(userID)
+	if err != nil {
+		SafeInternalError(c, "List traders", err)
+		return
+	}
+	linked := make([]*store.Trader, 0)
+	for _, t := range traders {
+		if t.StrategyID == strategyID {
+			linked = append(linked, t)
+		}
+	}
+
+	// Merged equity curve over the last 7 days.
+	now := time.Now().UTC()
+	start := now.Add(-7 * 24 * time.Hour)
+	series := make(map[int64]float64)
+	order := make([]int64, 0)
+	for _, t := range linked {
+		snaps, err := s.store.Equity().GetByTimeRange(t.ID, start, now)
+		if err != nil {
+			continue
+		}
+		for _, snap := range snaps {
+			key := snap.Timestamp.UTC().Unix()
+			if _, ok := series[key]; !ok {
+				order = append(order, key)
+			}
+			series[key] += snap.TotalEquity
+		}
+	}
+	sort.Slice(order, func(i, j int) bool { return order[i] < order[j] })
+
+	nav := make([]navPointDTO, 0, len(order))
+	for _, key := range order {
+		nav = append(nav, navPointDTO{Timestamp: time.Unix(key, 0).UTC(), TotalEquity: series[key]})
+	}
+
+	dto := strategyStatsDTO{NavPoints: nav, Symbols: []string{}}
+	// AUM = sum of latest equity per linked trader.
+	var aum float64
+	for _, t := range linked {
+		if latest, err := s.store.Equity().GetLatest(t.ID, 1); err == nil && len(latest) > 0 {
+			aum += latest[len(latest)-1].TotalEquity
+		}
+	}
+	dto.AUM = aum
+
+	// Open-position symbols across linked traders (union).
+	symbolSet := make(map[string]bool)
+	for _, t := range linked {
+		if positions, err := s.store.Position().GetOpenPositions(t.ID); err == nil {
+			for _, p := range positions {
+				symbolSet[p.Symbol] = true
+			}
+		}
+	}
+	for sym := range symbolSet {
+		dto.Symbols = append(dto.Symbols, sym)
+	}
+
+	// Metrics.
+	dto.SevenDayYield = sevenDayYield(nav)
+	dto.MaxDrawdown = maxDrawdown(nav)
+	dto.Sharpe = sharpeFromCurve(nav)
+
+	c.JSON(http.StatusOK, dto)
+}
+
+// sevenDayYield returns the percentage change from the first to the last NAV
+// point, or nil when there are fewer than 2 points or the first point is zero.
+func sevenDayYield(nav []navPointDTO) *float64 {
+	if len(nav) < 2 || nav[0].TotalEquity == 0 {
+		return nil
+	}
+	y := (nav[len(nav)-1].TotalEquity - nav[0].TotalEquity) / nav[0].TotalEquity * 100
+	return &y
+}
+
+// maxDrawdown returns the maximum drawdown percentage from the running peak,
+// or nil when there are fewer than 2 points.
+func maxDrawdown(nav []navPointDTO) *float64 {
+	if len(nav) < 2 {
+		return nil
+	}
+	peak := nav[0].TotalEquity
+	var maxDD float64
+	for _, p := range nav {
+		if p.TotalEquity > peak {
+			peak = p.TotalEquity
+		}
+		if peak > 0 {
+			dd := (peak - p.TotalEquity) / peak * 100
+			if dd > maxDD {
+				maxDD = dd
+			}
+		}
+	}
+	return &maxDD
+}
+
+// sharpeFromCurve computes annualized Sharpe from per-interval returns.
+func sharpeFromCurve(nav []navPointDTO) *float64 {
+	if len(nav) < 3 {
+		return nil
+	}
+	returns := make([]float64, 0, len(nav)-1)
+	for i := 1; i < len(nav); i++ {
+		if nav[i-1].TotalEquity == 0 {
+			return nil
+		}
+		returns = append(returns, (nav[i].TotalEquity-nav[i-1].TotalEquity)/nav[i-1].TotalEquity)
+	}
+	mean := 0.0
+	for _, r := range returns {
+		mean += r
+	}
+	mean /= float64(len(returns))
+	var variance float64
+	for _, r := range returns {
+		variance += (r - mean) * (r - mean)
+	}
+	variance /= float64(len(returns))
+	if variance == 0 {
+		return nil
+	}
+	std := math.Sqrt(variance)
+	annual := math.Sqrt(float64(len(returns))) // per-sample annualization factor
+	out := mean / std * annual
+	return &out
 }

@@ -408,6 +408,9 @@ After activating, create or update a trader with this strategy_id to apply it.`,
 			s.routeWithSchema(protected, "POST", "/strategies/:id/restore", "Restore a strategy to a saved version",
 				`Body: {"version":<int, from GET /strategies/:id/versions>}. Applies that version's config. Blocked while a running trader uses the strategy.`,
 				s.handleRestoreStrategyVersion)
+			s.routeWithSchema(protected, "GET", "/strategies/:id/stats", "Aggregate strategy stats (7D yield, Sharpe, max drawdown, merged NAV)",
+				`Returns: {"aum":<number>,"symbols":[<string>],"nav_points":[{"timestamp":"<RFC3339>","total_equity":<number>}],"seven_day_yield":<number|null>,"sharpe":<number|null>,"max_drawdown":<number|null>}`,
+				s.handleGetStrategyStats)
 
 			// Data for specified trader (using query parameter ?trader_id=xxx)
 			// IMPORTANT: All ?trader_id= values must be the EXACT "trader_id" field from GET /api/my-traders
