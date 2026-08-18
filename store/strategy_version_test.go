@@ -145,3 +145,62 @@ func TestStrategyLifecycleSnapshots(t *testing.T) {
 		t.Fatalf("after delete, version count = %d, want 0", len(remaining))
 	}
 }
+
+func TestStrategyRestoreNoSnapshot(t *testing.T) {
+	ss, vs := newStrategyVersionLifecycleStore(t)
+
+	strat := &Strategy{
+		ID:       "strat-restore",
+		UserID:   "user-restore",
+		Name:     "Restore",
+		Config:   `{"a":1}`,
+		IsActive: false,
+	}
+	if err := ss.Create(strat); err != nil {
+		t.Fatalf("create strategy: %v", err)
+	}
+
+	// Simulate a restore: set Config to an earlier version's value, then call
+	// UpdateNoSnapshot (as the restore handler does). This must NOT create a
+	// new snapshot or bump the version count.
+	restored := &Strategy{
+		ID:       "strat-restore",
+		UserID:   "user-restore",
+		Name:     "Restore",
+		Config:   `{"a":0}`,
+		IsActive: false,
+	}
+	if err := ss.UpdateNoSnapshot(restored); err != nil {
+		t.Fatalf("update without snapshot: %v", err)
+	}
+
+	list, err := vs.List("strat-restore", "user-restore")
+	if err != nil {
+		t.Fatalf("list versions after restore: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("after restore, version count = %d, want 1 (no new snapshot)", len(list))
+	}
+	if list[0].Version != 1 || list[0].Config != `{"a":1}` {
+		t.Fatalf("restore should not alter existing snapshot: %+v", list[0])
+	}
+
+	// And a normal Update still snapshots pre-edit state.
+	edited := &Strategy{
+		ID:       "strat-restore",
+		UserID:   "user-restore",
+		Name:     "Restore edited",
+		Config:   `{"a":2}`,
+		IsActive: false,
+	}
+	if err := ss.Update(edited); err != nil {
+		t.Fatalf("update strategy: %v", err)
+	}
+	list, err = vs.List("strat-restore", "user-restore")
+	if err != nil {
+		t.Fatalf("list versions after edit: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("after edit, version count = %d, want 2", len(list))
+	}
+}

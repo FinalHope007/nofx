@@ -1283,6 +1283,18 @@ func (s *StrategyStore) Update(strategy *Strategy) error {
 			return err
 		}
 	}
+	return s.updateRow(strategy)
+}
+
+// UpdateNoSnapshot applies the same field updates as Update but without the
+// pre-edit snapshot. Used by restore, which must not shift version numbering
+// or add redundant snapshot rows (restore is already reversible by switching
+// back to a prior version).
+func (s *StrategyStore) UpdateNoSnapshot(strategy *Strategy) error {
+	return s.updateRow(strategy)
+}
+
+func (s *StrategyStore) updateRow(strategy *Strategy) error {
 	return s.db.Model(&Strategy{}).
 		Where("id = ? AND user_id = ?", strategy.ID, strategy.UserID).
 		Updates(map[string]interface{}{

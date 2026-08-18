@@ -87,12 +87,16 @@ export const strategyApi = {
     return result.data ?? null
   },
 
-  async restoreVersion(strategyId: string, version: number): Promise<{ ok: boolean }> {
+  async restoreVersion(
+    strategyId: string,
+    version: number
+  ): Promise<{ ok: boolean; error?: string }> {
     const result = await httpClient.post<{ message: string }>(
       `${API_BASE}/strategies/${strategyId}/restore`,
       { version }
     )
-    return { ok: result.success }
+    if (result.success) return { ok: true }
+    return { ok: false, error: result.message }
   },
 
   async getStrategyStats(strategyId: string): Promise<StrategyStatsResponse> {

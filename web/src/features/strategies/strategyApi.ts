@@ -42,7 +42,7 @@ export async function getVersion(
 export async function restoreVersion(
   strategyId: string,
   version: number
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; error?: string }> {
   return strategyApi.restoreVersion(strategyId, version)
 }
 

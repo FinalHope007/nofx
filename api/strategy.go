@@ -888,7 +888,7 @@ func (s *Server) handleRestoreStrategyVersion(c *gin.Context) {
 		return
 	}
 	strategy.Config = v.Config
-	if err := s.store.Strategy().Update(strategy); err != nil {
+	if err := s.store.Strategy().UpdateNoSnapshot(strategy); err != nil {
 		SafeInternalError(c, "Failed to restore strategy", err)
 		return
 	}

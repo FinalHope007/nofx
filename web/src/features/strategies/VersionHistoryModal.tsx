@@ -44,7 +44,7 @@ export function VersionHistoryModal({
         current.version
       )
       if (!res.ok) {
-        notify.warning('Version restore requires backend support (pending).')
+        notify.warning(res.error || 'Restore failed')
       } else {
         notify.success('Strategy restored')
       }
@@ -143,7 +143,7 @@ export function VersionHistoryModal({
               Restore
             </button>
             <p className="text-center text-[11px] text-nofx-text-muted">
-              Version history backend is pending; restore is not yet applied.
+              Restoring switches the strategy back to this version.
             </p>
           </div>
         ) : (
