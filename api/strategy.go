@@ -766,3 +766,133 @@ func (s *Server) runRealAITest(userID, modelID, systemPrompt, userPrompt string)
 func (s *Server) resolveStrategyDataWalletKey(userID, selectedModelID string) (string, error) {
 	return s.store.AIModel().ResolveClaw402WalletKey(userID, selectedModelID)
 }
+
+type strategyVersionDTO struct {
+	Version    int             `json:"version"`
+	StrategyID string          `json:"strategy_id"`
+	Label      string          `json:"label"`
+	Note       string          `json:"note"`
+	Config     json.RawMessage `json:"config"`
+	CreatedAt  time.Time       `json:"created_at"`
+	IsCurrent  bool            `json:"is_current"`
+}
+
+func toStrategyVersionDTO(v *store.StrategyVersion) strategyVersionDTO {
+	return strategyVersionDTO{
+		Version:    v.Version,
+		StrategyID: v.StrategyID,
+		Label:      fmt.Sprintf("v%d", v.Version),
+		Note:       v.Note,
+		Config:     json.RawMessage(v.Config),
+		CreatedAt:  v.CreatedAt,
+		IsCurrent:  v.IsCurrent,
+	}
+}
+
+// runningTradersForStrategy returns the names of running traders linked to a strategy.
+func (s *Server) runningTradersForStrategy(userID, strategyID string) ([]string, error) {
+	traders, err := s.store.Trader().List(userID)
+	if err != nil {
+		return nil, err
+	}
+	var running []string
+	for _, t := range traders {
+		if t.StrategyID == strategyID && t.IsRunning {
+			running = append(running, t.Name)
+		}
+	}
+	return running, nil
+}
+
+// handleListStrategyVersions List strategy version snapshots
+func (s *Server) handleListStrategyVersions(c *gin.Context) {
+	userID := c.GetString("user_id")
+	strategyID := c.Param("id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	if _, err := s.store.Strategy().Get(userID, strategyID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Strategy not found"})
+		return
+	}
+	versions, err := s.store.StrategyVersion().List(strategyID, userID)
+	if err != nil {
+		SafeInternalError(c, "Failed to get strategy versions", err)
+		return
+	}
+	out := make([]strategyVersionDTO, 0, len(versions))
+	for _, v := range versions {
+		out = append(out, toStrategyVersionDTO(v))
+	}
+	c.JSON(http.StatusOK, gin.H{"versions": out})
+}
+
+// handleGetStrategyVersion Get a single strategy version snapshot
+func (s *Server) handleGetStrategyVersion(c *gin.Context) {
+	userID := c.GetString("user_id")
+	strategyID := c.Param("id")
+	versionStr := c.Param("version")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	var version int
+	if _, err := fmt.Sscanf(versionStr, "%d", &version); err != nil {
+		SafeBadRequest(c, "Invalid version")
+		return
+	}
+	v, err := s.store.StrategyVersion().Get(strategyID, userID, version)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Version not found"})
+		return
+	}
+	c.JSON(http.StatusOK, toStrategyVersionDTO(v))
+}
+
+// handleRestoreStrategyVersion Restore a strategy to a saved version
+func (s *Server) handleRestoreStrategyVersion(c *gin.Context) {
+	userID := c.GetString("user_id")
+	strategyID := c.Param("id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	var req struct {
+		Version int `json:"version" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		SafeBadRequest(c, "Invalid request parameters")
+		return
+	}
+	// Blocked while a running trader uses the strategy (same guard as the editor).
+	running, err := s.runningTradersForStrategy(userID, strategyID)
+	if err != nil {
+		SafeInternalError(c, "Check running traders", err)
+		return
+	}
+	if len(running) > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "Cannot restore a strategy while a trader is running on it. Stop the trader first."})
+		return
+	}
+	v, err := s.store.StrategyVersion().Get(strategyID, userID, req.Version)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Version not found"})
+		return
+	}
+	strategy, err := s.store.Strategy().Get(userID, strategyID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Strategy not found"})
+		return
+	}
+	strategy.Config = v.Config
+	if err := s.store.Strategy().Update(strategy); err != nil {
+		SafeInternalError(c, "Failed to restore strategy", err)
+		return
+	}
+	if err := s.store.StrategyVersion().SetCurrent(strategyID, userID, v.Version); err != nil {
+		SafeInternalError(c, "Failed to mark version current", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Strategy restored to v%d", v.Version), "version": v.Version})
+}

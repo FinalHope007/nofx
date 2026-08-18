@@ -403,6 +403,11 @@ After activating, create or update a trader with this strategy_id to apply it.`,
 			s.routeWithSchema(protected, "POST", "/strategies/:id/duplicate", "Duplicate an existing strategy",
 				`:id = EXACT id from GET /api/strategies. Creates a copy with " (copy)" appended to the name.`,
 				s.handleDuplicateStrategy)
+			s.route(protected, "GET", "/strategies/:id/versions", "List strategy version snapshots", s.handleListStrategyVersions)
+			s.route(protected, "GET", "/strategies/:id/versions/:version", "Get a single strategy version snapshot", s.handleGetStrategyVersion)
+			s.routeWithSchema(protected, "POST", "/strategies/:id/restore", "Restore a strategy to a saved version",
+				`Body: {"version":<int, from GET /strategies/:id/versions>}. Applies that version's config. Blocked while a running trader uses the strategy.`,
+				s.handleRestoreStrategyVersion)
 
 			// Data for specified trader (using query parameter ?trader_id=xxx)
 			// IMPORTANT: All ?trader_id= values must be the EXACT "trader_id" field from GET /api/my-traders
