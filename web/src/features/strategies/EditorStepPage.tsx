@@ -680,9 +680,6 @@ export function EditorStepPage() {
                 </div>
               </div>
             </div>
-            <p className="mt-2 text-xs text-nofx-danger">
-              Runtime prompt wiring is pending backend work.
-            </p>
           </div>
         </fieldset>
 
