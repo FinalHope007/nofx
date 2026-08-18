@@ -18,19 +18,19 @@ type Store struct {
 	driver *DBDriver // Database driver for abstraction (legacy)
 
 	// Sub-stores (lazy initialization)
-	user           *UserStore
-	aiModel        *AIModelStore
-	exchange       *ExchangeStore
-	trader         *TraderStore
-	decision       *DecisionStore
-	position       *PositionStore
+	user            *UserStore
+	aiModel         *AIModelStore
+	exchange        *ExchangeStore
+	trader          *TraderStore
+	decision        *DecisionStore
+	position        *PositionStore
 	strategy        *StrategyStore
 	strategyVersion *StrategyVersionStore
-	equity         *EquityStore
-	order          *OrderStore
-	grid           *GridStore
-	aiCharge       *AIChargeStore
-	telegramConfig TelegramConfigStore
+	equity          *EquityStore
+	order           *OrderStore
+	grid            *GridStore
+	aiCharge        *AIChargeStore
+	telegramConfig  TelegramConfigStore
 
 	mu sync.RWMutex
 }
