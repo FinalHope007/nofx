@@ -24,7 +24,8 @@ type Store struct {
 	trader         *TraderStore
 	decision       *DecisionStore
 	position       *PositionStore
-	strategy       *StrategyStore
+	strategy        *StrategyStore
+	strategyVersion *StrategyVersionStore
 	equity         *EquityStore
 	order          *OrderStore
 	grid           *GridStore
@@ -149,6 +150,9 @@ func (s *Store) initTables() error {
 	if err := s.Strategy().initTables(); err != nil {
 		return fmt.Errorf("failed to initialize strategy tables: %w", err)
 	}
+	if err := s.StrategyVersion().initTables(); err != nil {
+		return fmt.Errorf("failed to initialize strategy version tables: %w", err)
+	}
 	if err := s.Equity().initTables(); err != nil {
 		return fmt.Errorf("failed to initialize equity tables: %w", err)
 	}
@@ -255,6 +259,16 @@ func (s *Store) Strategy() *StrategyStore {
 		s.strategy = NewStrategyStore(s.gdb)
 	}
 	return s.strategy
+}
+
+// StrategyVersion gets strategy version storage
+func (s *Store) StrategyVersion() *StrategyVersionStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.strategyVersion == nil {
+		s.strategyVersion = NewStrategyVersionStore(s.gdb)
+	}
+	return s.strategyVersion
 }
 
 // Equity gets equity storage
