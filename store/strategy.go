@@ -724,7 +724,8 @@ func StrategyClampWarnings(before, after StrategyConfig, lang string) []string {
 
 // StrategyStore strategy storage
 type StrategyStore struct {
-	db *gorm.DB
+	db      *gorm.DB
+	version *StrategyVersionStore
 }
 
 // Strategy strategy configuration
@@ -1124,7 +1125,7 @@ type RiskControlConfig struct {
 
 // NewStrategyStore creates a new StrategyStore
 func NewStrategyStore(db *gorm.DB) *StrategyStore {
-	return &StrategyStore{db: db}
+	return &StrategyStore{db: db, version: NewStrategyVersionStore(db)}
 }
 
 func (s *StrategyStore) initTables() error {
@@ -1262,11 +1263,26 @@ Open only when Claw402 Signal Lab, cost/liquidation heatmap and raw candles broa
 
 // Create create a strategy
 func (s *StrategyStore) Create(strategy *Strategy) error {
-	return s.db.Create(strategy).Error
+	if err := s.db.Create(strategy).Error; err != nil {
+		return err
+	}
+	snap, err := s.version.CreateSnapshot(strategy.ID, strategy.UserID, strategy.Config, "v1")
+	if err != nil {
+		return err
+	}
+	return s.version.SetCurrent(strategy.ID, strategy.UserID, snap.Version)
 }
 
 // Update update a strategy
 func (s *StrategyStore) Update(strategy *Strategy) error {
+	// Snapshot pre-edit state as a new version (preserves what the strategy
+	// looked like before this edit).
+	var existing Strategy
+	if err := s.db.Where("id = ? AND user_id = ?", strategy.ID, strategy.UserID).First(&existing).Error; err == nil && existing.Config != "" {
+		if _, err := s.version.CreateSnapshot(existing.ID, existing.UserID, existing.Config, "Snapshot before edit"); err != nil {
+			return err
+		}
+	}
 	return s.db.Model(&Strategy{}).
 		Where("id = ? AND user_id = ?", strategy.ID, strategy.UserID).
 		Updates(map[string]interface{}{
@@ -1300,7 +1316,10 @@ func (s *StrategyStore) Delete(userID, id string) error {
 		return fmt.Errorf("cannot delete strategy in use by %d trader(s) - reassign those traders first", count)
 	}
 
-	return s.db.Where("id = ? AND user_id = ?", id, userID).Delete(&Strategy{}).Error
+	if err := s.db.Where("id = ? AND user_id = ?", id, userID).Delete(&Strategy{}).Error; err != nil {
+		return err
+	}
+	return s.version.DeleteForStrategy(id, userID)
 }
 
 // List get user's strategy list
