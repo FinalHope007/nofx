@@ -23,7 +23,7 @@ func NewOpportunityClient() *OpportunityClient {
 type opportunityListResponse struct {
 	Data struct {
 		Items []struct {
-			Asset   string            `json:"asset"`
+			Asset   string `json:"asset"`
 			Metrics map[string]struct {
 				Value string `json:"value"`
 			} `json:"metrics"`
@@ -63,16 +63,16 @@ func (c *OpportunityClient) GetOpportunityAssets(ctx context.Context, interval, 
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("binance opportunity: build request: %w", err)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("binance opportunity: request: %w", err)
 	}
 	defer resp.Body.Close()
 	var parsed opportunityListResponse
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("binance opportunity: decode: %w", err)
 	}
 	key := scoreKeyForScene(scene, interval)
 	out := make([]OpportunityAsset, 0, len(parsed.Data.Items))
