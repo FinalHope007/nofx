@@ -6,7 +6,7 @@ import (
 )
 
 // binanceDetailCacheTTL bounds how long a cached per-coin Binance detail is kept.
-const binanceDetailCacheTTL = 60 * time.Second
+const binanceDetailCacheTTL = 10 * time.Minute
 
 type binanceDetailEntry struct {
 	value   map[string]string

@@ -1,6 +1,9 @@
 package kernel
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestBinanceDetailCacheTTL(t *testing.T) {
 	e := NewStrategyEngine(nil)
@@ -12,5 +15,10 @@ func TestBinanceDetailCacheTTL(t *testing.T) {
 	got, ok := e.binanceDetail(key)
 	if !ok || got["technical_score_1h"] != "Positive" {
 		t.Fatalf("expected cached value, got %v ok=%v", got, ok)
+	}
+	// TTL is 10 minutes — verify it hasn't expired after a short wait
+	// (we don't wait 10 minutes in the test, just check the constant)
+	if binanceDetailCacheTTL != 10*time.Minute {
+		t.Fatalf("expected TTL of 10 minutes, got %v", binanceDetailCacheTTL)
 	}
 }
