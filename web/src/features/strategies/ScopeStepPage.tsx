@@ -22,21 +22,36 @@ function cardUnit(def: ScopeCardDef, limit: number): ScopeUnit {
 function matchConcreteScope(
   cs: import('../../types/strategy').CoinSourceConfig
 ): ScopeUnit | null {
-  // The persisted config uses the backend's source_type union (e.g.
-  // 'vergex_signal'), while scope cards carry the wizard's scope source_type
-  // (e.g. 'vergex'). Translate so the card de/reserialization round-trips so a
-  // single scope can be prefilled on edit.
   const scopeSource =
     cs.source_type === 'vergex_signal' ? 'vergex' : cs.source_type
   const def = SCOPE_CARD_DEFS.find((c) => c.source_type === scopeSource)
   if (!def) return null
-  const limit =
-    cs.source_type === 'ai500'
-      ? (cs.ai500_limit ?? def.defaultLimit)
-      : cs.source_type === 'vergex_signal'
-        ? (cs.vergex_limit ?? def.defaultLimit)
-        : (cs.hyper_rank_limit ?? def.defaultLimit)
-  return toScopeUnit(def, limit)
+  let limit: number
+  switch (cs.source_type) {
+    case 'ai500':
+      limit = cs.ai500_limit ?? def.defaultLimit
+      break
+    case 'vergex_signal':
+      limit = cs.vergex_limit ?? def.defaultLimit
+      break
+    case 'binance_technical':
+      limit = cs.binance_technical_limit ?? def.defaultLimit
+      break
+    case 'binance_sentiment':
+      limit = cs.binance_sentiment_limit ?? def.defaultLimit
+      break
+    default:
+      limit = cs.hyper_rank_limit ?? def.defaultLimit
+  }
+  const unit = toScopeUnit(def, limit)
+  if (cs.source_type === 'binance_technical') {
+    unit.interval = cs.binance_technical_interval ?? '1h'
+    unit.direction = cs.binance_technical_direction ?? 'top'
+  }
+  if (cs.source_type === 'binance_sentiment') {
+    unit.direction = cs.binance_sentiment_direction ?? 'top'
+  }
+  return unit
 }
 
 export function ScopeStepPage() {
@@ -95,7 +110,15 @@ export function ScopeStepPage() {
     if (cardActive(scope, def)) {
       clearScope()
     } else {
-      setScope(cardUnit(def, topN[def.id] ?? def.defaultLimit))
+      const unit = cardUnit(def, topN[def.id] ?? def.defaultLimit)
+      if (def.source_type === 'binance_technical') {
+        unit.interval = '1h'
+        unit.direction = 'top'
+      }
+      if (def.source_type === 'binance_sentiment') {
+        unit.direction = 'top'
+      }
+      setScope(unit)
     }
   }
 
@@ -103,7 +126,12 @@ export function ScopeStepPage() {
     const limit = Math.min(50, Math.max(1, raw || 1))
     setTopN((prev) => ({ ...prev, [def.id]: limit }))
     if (cardActive(scope, def)) {
-      setScope(cardUnit(def, limit))
+      const unit = cardUnit(def, limit)
+      if (def.source_type === 'binance_technical' || def.source_type === 'binance_sentiment') {
+        unit.interval = scope?.interval
+        unit.direction = scope?.direction
+      }
+      setScope(unit)
     }
   }
 
@@ -242,6 +270,68 @@ export function ScopeStepPage() {
                   className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
                 />
               </div>
+
+              {active &&
+                (def.source_type === 'binance_technical' ||
+                  def.source_type === 'binance_sentiment') && (
+                  <div
+                    className="mt-2 flex items-center gap-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="text-xs text-nofx-text-muted">
+                      Direction
+                    </span>
+                    <div className="flex gap-1">
+                      {(['top', 'bottom'] as const).map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => {
+                            const next = { ...scope!, direction: d }
+                            setScope(next)
+                          }}
+                          className={`rounded px-2 py-0.5 text-xs capitalize ${
+                            scope?.direction === d
+                              ? 'bg-nofx-gold/20 text-nofx-gold'
+                              : 'text-nofx-text-muted hover:text-nofx-text'
+                          }`}
+                        >
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              {active && def.source_type === 'binance_technical' && (
+                <div
+                  className="mt-2 flex items-center gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="text-xs text-nofx-text-muted">
+                    Interval
+                  </span>
+                  <div className="flex gap-1">
+                    {(['1h', '24h'] as const).map((iv) => (
+                      <button
+                        key={iv}
+                        type="button"
+                        onClick={() => {
+                          const next = { ...scope!, interval: iv }
+                          setScope(next)
+                        }}
+                        className={`rounded px-2 py-0.5 text-xs ${
+                          scope?.interval === iv
+                            ? 'bg-nofx-gold/20 text-nofx-gold'
+                            : 'text-nofx-text-muted hover:text-nofx-text'
+                        }`}
+                      >
+                        {iv}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
