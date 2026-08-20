@@ -304,6 +304,27 @@ func TestRenderRecentDecisionsStructured(t *testing.T) {
 	}
 }
 
+func TestFormatPerCoinSignalsBinance(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.Indicators.EnableBinanceTechnicalData = true
+	cfg.Indicators.BinanceTechnicalIntervals = []string{"1h"}
+	cfg.Indicators.EnableBinanceSentimentData = true
+	e := NewStrategyEngine(cfg)
+	e.SetPerCoinSignals(map[string]PerCoinSignal{
+		"BTCUSDT": {
+			BinanceTechnical: map[string]string{"1h|technical_summary_1h": "Bullish overall for BTC."},
+			BinanceSentiment: map[string]string{"sentiment_summary": "In the past 24h BTC was bullish."},
+		},
+	})
+	out := e.formatPerCoinSignals("BTCUSDT", 60000)
+	if !strings.Contains(out, "Binance Technical") || !strings.Contains(out, "Bullish overall") {
+		t.Fatalf("missing technical section: %s", out)
+	}
+	if !strings.Contains(out, "Sentiment") || !strings.Contains(out, "In the past 24h") {
+		t.Fatalf("missing sentiment section: %s", out)
+	}
+}
+
 func TestRenderRecentDecisionsDigestAndDisabled(t *testing.T) {
 	disabled := store.DecisionContextConfig{Enabled: false, RecentCount: 2, Mode: "structured"}
 	if out := renderRecentDecisions(&disabled, nil); out != "" {

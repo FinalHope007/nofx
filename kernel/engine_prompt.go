@@ -1003,11 +1003,13 @@ func (e *StrategyEngine) formatPositionInfo(index int, pos PositionInfo, ctx *Co
 func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float64) string {
 	cfg := e.GetConfig()
 	ind := cfg.Indicators
-	if !ind.EnableAI500Data && !ind.EnableOIData && !ind.EnableNetflowData && !ind.EnablePriceData {
+	if !ind.EnableAI500Data && !ind.EnableOIData && !ind.EnableNetflowData && !ind.EnablePriceData &&
+		!ind.EnableBinanceTechnicalData && !ind.EnableBinanceSentimentData {
 		return ""
 	}
 	sig, ok := e.PerCoinSignalFor(symbol)
-	if !ok || sig.AI500 == nil && len(sig.OI) == 0 && len(sig.Netflow) == 0 && len(sig.Price) == 0 {
+	if !ok || sig.AI500 == nil && len(sig.OI) == 0 && len(sig.Netflow) == 0 && len(sig.Price) == 0 &&
+		len(sig.BinanceTechnical) == 0 && len(sig.BinanceSentiment) == 0 {
 		return ""
 	}
 	var sb strings.Builder
@@ -1075,6 +1077,27 @@ func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float6
 		}
 	}
 
+	if ind.EnableBinanceTechnicalData && len(sig.BinanceTechnical) > 0 {
+		sb.WriteString(fmt.Sprintf("=== %s Binance Technical ===\n", symbol))
+		for _, iv := range e.binanceIntervalOrder(ind.BinanceTechnicalIntervals) {
+			if v, ok := sig.BinanceTechnical[iv+"|technical_summary_"+iv]; ok {
+				sb.WriteString(fmt.Sprintf("[%s] %s\n", iv, v))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	if ind.EnableBinanceSentimentData && len(sig.BinanceSentiment) > 0 {
+		sb.WriteString(fmt.Sprintf("=== %s Binance Sentiment ===\n", symbol))
+		if v, ok := sig.BinanceSentiment["sentiment_summary"]; ok {
+			sb.WriteString(v + "\n")
+		}
+		if v, ok := sig.BinanceSentiment["sentiment_score"]; ok {
+			sb.WriteString(fmt.Sprintf("Sentiment score: %s\n", v))
+		}
+		sb.WriteString("\n")
+	}
+
 	return sb.String()
 }
 
@@ -1086,6 +1109,21 @@ func (e *StrategyEngine) durationOrder(durs []string) []string {
 	}
 	sort.SliceStable(durs, func(i, j int) bool { return rank[durs[i]] < rank[durs[j]] })
 	return durs
+}
+
+func (e *StrategyEngine) binanceIntervalOrder(intervals []string) []string {
+	if len(intervals) == 0 {
+		return []string{"1h"}
+	}
+	out := make([]string, 0, len(intervals))
+	seen := map[string]bool{}
+	for _, iv := range intervals {
+		if !seen[iv] {
+			seen[iv] = true
+			out = append(out, iv)
+		}
+	}
+	return out
 }
 
 func (e *StrategyEngine) formatOIListLine(dur, list string, p nofxos.OIPosition) string {
