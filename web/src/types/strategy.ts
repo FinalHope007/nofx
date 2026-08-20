@@ -126,6 +126,8 @@ export interface CoinSourceConfig {
     | 'netflow_low'
     | 'price_top'
     | 'price_low'
+    | 'binance_technical'
+    | 'binance_sentiment'
     | 'hyper_all'
     | 'hyper_main'
     | 'hyper_rank'
@@ -153,6 +155,12 @@ export interface CoinSourceConfig {
   vergex_market_type?: string;
   vergex_chain?: string;
   vergex_liq_band?: string;
+  // Binance Opportunity scopes (free)
+  binance_technical_interval?: '1h' | '24h';
+  binance_technical_direction?: 'top' | 'bottom';
+  binance_technical_limit?: number;
+  binance_sentiment_direction?: 'top' | 'bottom';
+  binance_sentiment_limit?: number;
   // Note: API URLs are now built automatically using nofxos_api_key from IndicatorConfig
 }
 
@@ -269,6 +277,7 @@ export type ScopeVariant =
   | 'top' | 'low'                  // oi top/low, netflow, price (rank array)
   | 'inflow' | 'outflow'           // netflow direction
   | 'volume'                       // hyper_rank volume
+  | 'binance'                      // Binance Opportunity scopes
 
 export interface ScopeUnit {
   id: string
@@ -282,6 +291,8 @@ export interface ScopeUnit {
     | 'nofxos_netflow'
     | 'nofxos_oi'
     | 'nofxos_price'
+    | 'binance_technical'
+    | 'binance_sentiment'
     | 'other'
   // Per-source rank-direction qualifier so the backend can pick the exact
   // free endpoint (and top/low array) for the chosen card.
@@ -289,6 +300,8 @@ export interface ScopeUnit {
   limit: number
   label: string
   provider: 'free' | 'paid'
+  interval?: '1h' | '24h'
+  direction?: 'top' | 'bottom'
 }
 
 // Runtime prompt-context knobs. Backend prompt-builder wiring is pending;

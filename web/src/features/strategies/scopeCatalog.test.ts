@@ -2,10 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { SCOPE_CARD_DEFS, toScopeUnit } from './scopeCatalog'
 
 describe('scope catalog', () => {
-  it('exposes free hyper rank crypto option', () => {
+  it('exposes free crypto scope cards', () => {
     const free = SCOPE_CARD_DEFS.filter((c) => c.provider === 'free')
-    expect(free.length).toBe(3)
-    expect(free.every((c) => c.source_type === 'hyper_rank')).toBe(true)
+    expect(free.length).toBe(5)
     expect(free.every((c) => c.category === 'crypto')).toBe(true)
   })
 

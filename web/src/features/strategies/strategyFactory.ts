@@ -167,6 +167,32 @@ export function buildCoinSource(unit: ScopeUnit | null): CoinSourceConfig {
     }
   }
 
+  if (unit.source_type === 'binance_technical') {
+    return {
+      source_type: 'binance_technical',
+      binance_technical_interval: unit.interval ?? '1h',
+      binance_technical_direction: unit.direction ?? 'top',
+      binance_technical_limit: clamp(unit.limit, 1, 50),
+      static_coins: [], excluded_coins: [],
+      use_ai500: false, ai500_limit: 0,
+      use_oi_top: false, oi_top_limit: 0,
+      use_oi_low: false, oi_low_limit: 0,
+      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+    }
+  }
+  if (unit.source_type === 'binance_sentiment') {
+    return {
+      source_type: 'binance_sentiment',
+      binance_sentiment_direction: unit.direction ?? 'top',
+      binance_sentiment_limit: clamp(unit.limit, 1, 50),
+      static_coins: [], excluded_coins: [],
+      use_ai500: false, ai500_limit: 0,
+      use_oi_top: false, oi_top_limit: 0,
+      use_oi_low: false, oi_low_limit: 0,
+      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+    }
+  }
+
   // Any other paid/provider-pending source: fall back to a safe static/empty
   // pool so runtime never errors today.
   return {

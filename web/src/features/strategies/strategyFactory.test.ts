@@ -119,4 +119,23 @@ describe('strategy factory', () => {
       mode: 'digest',
     })
   })
+
+  it('buildCoinSource maps binance_technical unit to concrete source', () => {
+    const cs = buildCoinSource({
+      id: 'crypto-binance-technical',
+      category: 'crypto',
+      source_type: 'binance_technical',
+      limit: 10,
+      label: 'Binance Technical',
+      provider: 'free',
+      variant: 'binance',
+      interval: '1h',
+      direction: 'top',
+    })
+    expect(cs.source_type).toBe('binance_technical')
+    expect(cs.binance_technical_interval).toBe('1h')
+    expect(cs.binance_technical_direction).toBe('top')
+    expect(cs.binance_technical_limit).toBe(10)
+    expect(cs.scope_mode).toBeUndefined()
+  })
 })

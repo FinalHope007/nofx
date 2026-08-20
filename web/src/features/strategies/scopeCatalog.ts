@@ -28,6 +28,22 @@ const freeHyperRank = (
   defaultLimit: 10,
 })
 
+const freeBinanceOpportunity = (
+  id: string,
+  label: string,
+  description: string,
+  source_type: ScopeUnit['source_type'],
+): ScopeCardDef => ({
+  id,
+  category: 'crypto',
+  label,
+  description,
+  provider: 'free',
+  source_type,
+  variant: 'binance',
+  defaultLimit: 10,
+})
+
 export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
   freeHyperRank(
     'crypto-top-gainers',
@@ -47,6 +63,9 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     'Top traders by volume on Hyperliquid',
     'volume'
   ),
+
+  freeBinanceOpportunity('crypto-binance-technical', 'Binance Technical', 'Top technical score (1h/24h) on Binance Opportunity', 'binance_technical'),
+  freeBinanceOpportunity('crypto-binance-sentiment', 'Binance Sentiment', 'Top sentiment score on Binance Opportunity', 'binance_sentiment'),
 
   // Crypto — PAID / provider pending
   {
