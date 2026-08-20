@@ -49,6 +49,12 @@ func (c *StrategyConfig) ClampLimits() {
 	if c.CoinSource.VergexLimit > MaxCandidateCoins {
 		c.CoinSource.VergexLimit = MaxCandidateCoins
 	}
+	if c.CoinSource.BinanceTechnicalLimit > MaxCandidateCoins {
+		c.CoinSource.BinanceTechnicalLimit = MaxCandidateCoins
+	}
+	if c.CoinSource.BinanceSentimentLimit > MaxCandidateCoins {
+		c.CoinSource.BinanceSentimentLimit = MaxCandidateCoins
+	}
 
 	// Clamp static coins
 	if len(c.CoinSource.StaticCoins) > MaxCandidateCoins {
@@ -355,6 +361,23 @@ func (c *StrategyConfig) NormalizeProductSchema() {
 		if c.CoinSource.VergexChain == "" {
 			c.CoinSource.VergexChain = "hyperliquid"
 		}
+	case "binance_technical":
+		if c.CoinSource.BinanceTechnicalDirection == "" {
+			c.CoinSource.BinanceTechnicalDirection = "top"
+		}
+		if c.CoinSource.BinanceTechnicalInterval == "" {
+			c.CoinSource.BinanceTechnicalInterval = "1h"
+		}
+		if c.CoinSource.BinanceTechnicalLimit <= 0 {
+			c.CoinSource.BinanceTechnicalLimit = 10
+		}
+	case "binance_sentiment":
+		if c.CoinSource.BinanceSentimentDirection == "" {
+			c.CoinSource.BinanceSentimentDirection = "top"
+		}
+		if c.CoinSource.BinanceSentimentLimit <= 0 {
+			c.CoinSource.BinanceSentimentLimit = 10
+		}
 	default:
 		c.CoinSource.SourceType = "vergex_signal"
 		c.CoinSource.UseAI500 = false
@@ -430,6 +453,10 @@ func normalizeCoinSourceType(value string) string {
 		return "price_top"
 	case strings.Contains(compact, "pricelow") || strings.Contains(value, "price low"):
 		return "price_low"
+	case strings.Contains(compact, "binancetechnical") || strings.Contains(value, "binance technical"):
+		return "binance_technical"
+	case strings.Contains(compact, "binancesentiment") || strings.Contains(value, "binance sentiment"):
+		return "binance_sentiment"
 	default:
 		return value
 	}
@@ -457,6 +484,10 @@ func inferCoinSourceType(source CoinSourceConfig) string {
 		return "netflow_top"
 	case source.PriceLimit > 0:
 		return "price_top"
+	case source.BinanceTechnicalLimit > 0 || source.BinanceTechnicalDirection != "" || source.BinanceTechnicalInterval != "":
+		return "binance_technical"
+	case source.BinanceSentimentLimit > 0 || source.BinanceSentimentDirection != "":
+		return "binance_sentiment"
 	default:
 		return "vergex_signal"
 	}
@@ -987,6 +1018,13 @@ type CoinSourceConfig struct {
 	PriceLimit   int `json:"price_limit,omitempty"`
 	// Vergex sub-card selector: "bull"|"bear"|"trending"|"gainers"|"losers"
 	VergexDirection string `json:"vergex_direction,omitempty"`
+	// Binance Opportunity technical scope: interval "1h"|"24h", direction "top"|"bottom".
+	BinanceTechnicalInterval  string `json:"binance_technical_interval,omitempty"`
+	BinanceTechnicalDirection string `json:"binance_technical_direction,omitempty"`
+	BinanceTechnicalLimit     int    `json:"binance_technical_limit,omitempty"`
+	// Binance Opportunity sentiment scope: direction "top"|"bottom" (24h-only, no interval).
+	BinanceSentimentDirection string `json:"binance_sentiment_direction,omitempty"`
+	BinanceSentimentLimit     int    `json:"binance_sentiment_limit,omitempty"`
 	// Note: API URLs are now built automatically using NofxOSAPIKey from IndicatorConfig
 }
 
