@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -31,5 +32,35 @@ func TestGetOpportunityAssetsTechnical(t *testing.T) {
 	}
 	if assets[0].Symbol != "TREE" || assets[0].Score != 9.45 {
 		t.Fatalf("unexpected first asset: %+v", assets[0])
+	}
+}
+
+func TestGetAssetDetails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/asset-details" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("asset"); got != "BTC" {
+			t.Errorf("expected asset=BTC, got %s", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"code":"000000","data":{"metrics":{
+			"technical_score_1h":{"value":"7.85","valueLabel":"Positive"},
+			"technical_summary_1h":{"value":"Bullish overall for BTC.","valueLabel":"Bullish overall for BTC."}
+		}},"success":true}`))
+	}))
+	defer srv.Close()
+
+	c := NewOpportunityClient()
+	c.baseURL = srv.URL
+	got, err := c.GetAssetDetails(context.Background(), "BTC", "technical", "1h")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["technical_score_1h"] != "Positive" {
+		t.Fatalf("expected score label, got %q", got["technical_score_1h"])
+	}
+	if !strings.Contains(got["technical_summary_1h"], "Bullish overall") {
+		t.Fatalf("expected summary, got %q", got["technical_summary_1h"])
 	}
 }

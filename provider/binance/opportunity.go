@@ -50,6 +50,47 @@ func scoreKeyForScene(scene, interval string) string {
 	}
 }
 
+type opportunityDetailResponse struct {
+	Data struct {
+		Metrics map[string]struct {
+			Value      string `json:"value"`
+			ValueLabel string `json:"valueLabel"`
+		} `json:"metrics"`
+	} `json:"data"`
+}
+
+func (c *OpportunityClient) GetAssetDetails(ctx context.Context, symbol, scene, interval string) (map[string]string, error) {
+	if interval == "" {
+		interval = "1h"
+	}
+	url := fmt.Sprintf("%s/asset-details?asset=%s&type=%s&interval=%s&quote=USDT",
+		c.baseURL, symbol, scene, interval)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("binance opportunity: build request: %w", err)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("binance opportunity: request: %w", err)
+	}
+	defer resp.Body.Close()
+	var parsed opportunityDetailResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return nil, fmt.Errorf("binance opportunity: decode: %w", err)
+	}
+	out := make(map[string]string, len(parsed.Data.Metrics))
+	for k, m := range parsed.Data.Metrics {
+		label := strings.TrimSpace(m.ValueLabel)
+		if label == "" {
+			label = strings.TrimSpace(m.Value)
+		}
+		if label != "" {
+			out[k] = label
+		}
+	}
+	return out, nil
+}
+
 func (c *OpportunityClient) GetOpportunityAssets(ctx context.Context, interval, scene string) ([]OpportunityAsset, error) {
 	if scene == "" {
 		scene = "technical"
