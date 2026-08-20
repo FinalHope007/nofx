@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"nofx/provider/binance"
@@ -142,5 +143,65 @@ func TestAttachPerCoinSignalsBinanceTechnical(t *testing.T) {
 	}
 	if sig.BinanceTechnical["1h|technical_summary_1h"] != "Bullish overall for BTC." {
 		t.Fatalf("expected technical_summary_1h to match, got %q", sig.BinanceTechnical["1h|technical_summary_1h"])
+	}
+}
+
+type fakeOpportunityClientN struct {
+	n int
+}
+
+func (f *fakeOpportunityClientN) GetOpportunityAssets(_ context.Context, _, _ string) ([]binance.OpportunityAsset, error) {
+	assets := make([]binance.OpportunityAsset, f.n)
+	for i := 0; i < f.n; i++ {
+		assets[i] = binance.OpportunityAsset{
+			Symbol: fmt.Sprintf("COIN%d", i),
+			Score:  float64(f.n - i),
+		}
+	}
+	return assets, nil
+}
+
+func (f *fakeOpportunityClientN) GetAssetDetails(_ context.Context, _, _, _ string) (map[string]string, error) {
+	return map[string]string{"fake_label": "fake_value"}, nil
+}
+
+func TestGetCandidateCoinsBinanceTechnicalNotTruncatedByLimit(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.CoinSource.SourceType = "binance_technical"
+	cfg.CoinSource.BinanceTechnicalInterval = "1h"
+	cfg.CoinSource.BinanceTechnicalDirection = "top"
+	cfg.CoinSource.BinanceTechnicalLimit = 5
+
+	engine := NewStrategyEngine(cfg)
+	engine.opportunity = &fakeOpportunityClientN{n: 20}
+
+	coins, err := engine.GetCandidateCoins()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(coins) != 20 {
+		t.Fatalf("expected 20 coins (no early truncation to limit=5), got %d", len(coins))
+	}
+	if coins[0].Symbol != "COIN0USDT" {
+		t.Fatalf("expected COIN0USDT first (highest score), got %s", coins[0].Symbol)
+	}
+}
+
+func TestGetCandidateCoinsBinanceTechnicalSoftCapAt50(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.CoinSource.SourceType = "binance_technical"
+	cfg.CoinSource.BinanceTechnicalInterval = "1h"
+	cfg.CoinSource.BinanceTechnicalDirection = "top"
+	cfg.CoinSource.BinanceTechnicalLimit = 10
+
+	engine := NewStrategyEngine(cfg)
+	engine.opportunity = &fakeOpportunityClientN{n: 100}
+
+	coins, err := engine.GetCandidateCoins()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(coins) != 50 {
+		t.Fatalf("expected 50 coins (soft cap), got %d", len(coins))
 	}
 }

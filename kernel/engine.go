@@ -974,12 +974,6 @@ func (e *StrategyEngine) getHyperRankCoins(category, direction string, limit int
 }
 
 func (e *StrategyEngine) getBinanceOpportunityCoins(scene, interval, direction string, limit int) ([]CandidateCoin, error) {
-	if limit <= 0 {
-		limit = store.MaxCandidateCoins
-	}
-	if limit > store.MaxCandidateCoins {
-		limit = store.MaxCandidateCoins
-	}
 	direction = strings.ToLower(strings.TrimSpace(direction))
 	if direction == "" {
 		direction = "top"
@@ -1008,8 +1002,14 @@ func (e *StrategyEngine) getBinanceOpportunityCoins(scene, interval, direction s
 		}
 		return mapped[i].score > mapped[j].score
 	})
-	if len(mapped) > limit {
-		mapped = mapped[:limit]
+	// Safety soft cap: avoid returning an absurdly large candidate list to the
+	// prompt builder. This is NOT the final prompt cap — the OI liquidity
+	// filter in fetchMarketDataWithStrategy applies the real MaxCandidateCoins
+	// cap AFTER filtering low-liquidity coins. The user's `limit` parameter is
+	// intentionally unused here; it no longer truncates the pool.
+	const softCap = 50
+	if len(mapped) > softCap {
+		mapped = mapped[:softCap]
 	}
 	candidates := make([]CandidateCoin, 0, len(mapped))
 	for _, m := range mapped {
@@ -1018,7 +1018,7 @@ func (e *StrategyEngine) getBinanceOpportunityCoins(scene, interval, direction s
 			Sources: []string{"binance_" + scene},
 		})
 	}
-	logger.Infof("✅ Loaded %d Binance %s opportunity coins (dir=%s, capped at %d)", len(candidates), scene, direction, limit)
+	logger.Infof("✅ Loaded %d Binance %s opportunity coins (dir=%s, soft-capped at %d)", len(candidates), scene, direction, softCap)
 	return candidates, nil
 }
 
