@@ -32,6 +32,25 @@ export interface StrategyEditorForm {
   enableRsi?: boolean
   enableOi?: boolean
   enableFundingRate?: boolean
+  enableAtr?: boolean
+  enableBoll?: boolean
+  enableVolume?: boolean
+  emaPeriods?: number[]
+  rsiPeriods?: number[]
+  atrPeriods?: number[]
+  bollPeriods?: number[]
+  primaryCount?: number
+  longerTimeframe?: string
+  longerCount?: number
+  enableOIRanking?: boolean
+  oiRankingDuration?: string
+  oiRankingLimit?: number
+  enableNetFlowRanking?: boolean
+  netFlowRankingDuration?: string
+  netFlowRankingLimit?: number
+  enablePriceRanking?: boolean
+  priceRankingDuration?: string
+  priceRankingLimit?: number
   tradingStyle?: 'scalp' | 'intraday' | 'swing' | 'default'
   maxPositions: number
   minPositionSize: number
@@ -280,17 +299,23 @@ export function buildStrategyConfig(form: StrategyEditorForm): StrategyConfig {
       indicators: {
         klines: {
           primary_timeframe: form.selectedTimeframes[0] ?? '15m',
-          primary_count: 30,
+          primary_count: form.primaryCount ?? 30,
           enable_multi_timeframe: form.selectedTimeframes.length > 1,
           selected_timeframes: form.selectedTimeframes,
+          longer_timeframe: form.longerTimeframe || undefined,
+          longer_count: form.longerCount && form.longerCount > 0 ? form.longerCount : undefined,
         },
         enable_raw_klines: true,
         enable_ema: form.enableEma ?? false,
         enable_macd: form.enableMacd ?? false,
         enable_rsi: form.enableRsi ?? false,
-        enable_atr: false,
-        enable_boll: false,
-        enable_volume: false,
+        enable_atr: form.enableAtr ?? false,
+        enable_boll: form.enableBoll ?? false,
+        enable_volume: form.enableVolume ?? false,
+        ema_periods: form.emaPeriods?.length ? form.emaPeriods : undefined,
+        rsi_periods: form.rsiPeriods?.length ? form.rsiPeriods : undefined,
+        atr_periods: form.atrPeriods?.length ? form.atrPeriods : undefined,
+        boll_periods: form.bollPeriods?.length ? form.bollPeriods : undefined,
         enable_oi: form.enableOi ?? false,
         enable_funding_rate: form.enableFundingRate ?? false,
         enable_ai500_data: form.enableAI500Data ?? false,
@@ -305,9 +330,15 @@ export function buildStrategyConfig(form: StrategyEditorForm): StrategyConfig {
         enable_quant_data: false,
         enable_quant_oi: false,
         enable_quant_netflow: false,
-        enable_oi_ranking: false,
-        enable_netflow_ranking: false,
-        enable_price_ranking: false,
+        enable_oi_ranking: form.enableOIRanking ?? false,
+        oi_ranking_duration: form.oiRankingDuration ?? '1h',
+        oi_ranking_limit: form.oiRankingLimit ?? 10,
+        enable_netflow_ranking: form.enableNetFlowRanking ?? false,
+        netflow_ranking_duration: form.netFlowRankingDuration ?? '1h',
+        netflow_ranking_limit: form.netFlowRankingLimit ?? 10,
+        enable_price_ranking: form.enablePriceRanking ?? false,
+        price_ranking_duration: form.priceRankingDuration ?? '1h',
+        price_ranking_limit: form.priceRankingLimit ?? 10,
       },
       custom_prompt: form.custom_prompt,
       risk_control: defaultRiskControl(form),

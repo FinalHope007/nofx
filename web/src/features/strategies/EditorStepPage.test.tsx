@@ -26,4 +26,18 @@ describe('EditorStepPage', () => {
     expect(screen.getByText('Throttling Settings (Risky)')).toBeTruthy()
     expect(screen.getByLabelText(/min hold/i)).toBeTruthy()
   })
+
+  it('renders Basic indicators and Data sources fieldsets', () => {
+    render(
+      <MemoryRouter>
+        <LanguageProvider>
+          <AuthProvider>
+            <EditorStepPage />
+          </AuthProvider>
+        </LanguageProvider>
+      </MemoryRouter>
+    )
+    expect(screen.getByText('Basic indicators')).toBeTruthy()
+    expect(screen.getByText('Data sources')).toBeTruthy()
+  })
 })

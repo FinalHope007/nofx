@@ -17,6 +17,15 @@ type Mode = 'create' | 'edit'
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d']
 const DURATIONS = ['15m', '30m', '1h', '4h', '8h', '12h', '24h']
+const EMA_PERIODS = [9, 10, 20, 50, 200]
+const RSI_PERIODS = [7, 14, 21]
+const ATR_PERIODS = [7, 14, 21]
+const BOLL_PERIODS = [10, 20, 50]
+const RANKING_DURATIONS = ['1h', '4h', '24h']
+
+function toggleNumberList(current: number[], n: number): number[] {
+  return current.includes(n) ? current.filter((x) => x !== n) : [...current, n].sort((a, b) => a - b)
+}
 
 export function EditorStepPage() {
   const navigate = useNavigate()
@@ -85,6 +94,28 @@ export function EditorStepPage() {
   const [enableRsi, setEnableRsi] = useState(false)
   const [enableOi, setEnableOi] = useState(false)
   const [enableFundingRate, setEnableFundingRate] = useState(false)
+  const [enableAtr, setEnableAtr] = useState(false)
+  const [enableBoll, setEnableBoll] = useState(false)
+  const [enableVolume, setEnableVolume] = useState(false)
+  const [emaPeriods, setEmaPeriods] = useState<number[]>([20, 50])
+  const [rsiPeriods, setRsiPeriods] = useState<number[]>([7, 14])
+  const [atrPeriods, setAtrPeriods] = useState<number[]>([14])
+  const [bollPeriods, setBollPeriods] = useState<number[]>([20])
+  const [enableBinanceTechnicalData, setEnableBinanceTechnicalData] = useState(false)
+  const [enableBinanceSentimentData, setEnableBinanceSentimentData] = useState(false)
+  const [binanceTechnicalIntervals, setBinanceTechnicalIntervals] = useState<('1h' | '24h')[]>(['1h'])
+  const [primaryCount, setPrimaryCount] = useState(30)
+  const [longerTimeframe, setLongerTimeframe] = useState('')
+  const [longerCount, setLongerCount] = useState(0)
+  const [enableOIRanking, setEnableOIRanking] = useState(false)
+  const [oiRankingDuration, setOIRankingDuration] = useState('1h')
+  const [oiRankingLimit, setOIRankingLimit] = useState(10)
+  const [enableNetFlowRanking, setEnableNetFlowRanking] = useState(false)
+  const [netFlowRankingDuration, setNetFlowRankingDuration] = useState('1h')
+  const [netFlowRankingLimit, setNetFlowRankingLimit] = useState(10)
+  const [enablePriceRanking, setEnablePriceRanking] = useState(false)
+  const [priceRankingDuration, setPriceRankingDuration] = useState('1h')
+  const [priceRankingLimit, setPriceRankingLimit] = useState(10)
   const [dataDurations, setDataDurations] = useState<string[]>(['1h', '24h'])
 
   useEffect(() => {
@@ -159,6 +190,28 @@ export function EditorStepPage() {
         setEnableRsi(ind?.enable_rsi ?? false)
         setEnableOi(ind?.enable_oi ?? false)
         setEnableFundingRate(ind?.enable_funding_rate ?? false)
+        setEnableAtr(ind?.enable_atr ?? false)
+        setEnableBoll(ind?.enable_boll ?? false)
+        setEnableVolume(ind?.enable_volume ?? false)
+        setEmaPeriods(ind?.ema_periods?.length ? ind.ema_periods : [20, 50])
+        setRsiPeriods(ind?.rsi_periods?.length ? ind.rsi_periods : [7, 14])
+        setAtrPeriods(ind?.atr_periods?.length ? ind.atr_periods : [14])
+        setBollPeriods(ind?.boll_periods?.length ? ind.boll_periods : [20])
+        setEnableBinanceTechnicalData(ind?.enable_binance_technical_data ?? false)
+        setEnableBinanceSentimentData(ind?.enable_binance_sentiment_data ?? false)
+        setBinanceTechnicalIntervals(ind?.binance_technical_intervals?.length ? ind.binance_technical_intervals : ['1h'])
+        setPrimaryCount(ind?.klines.primary_count ?? 30)
+        setLongerTimeframe(ind?.klines.longer_timeframe ?? '')
+        setLongerCount(ind?.klines.longer_count ?? 0)
+        setEnableOIRanking(ind?.enable_oi_ranking ?? false)
+        setOIRankingDuration(ind?.oi_ranking_duration ?? '1h')
+        setOIRankingLimit(ind?.oi_ranking_limit ?? 10)
+        setEnableNetFlowRanking(ind?.enable_netflow_ranking ?? false)
+        setNetFlowRankingDuration(ind?.netflow_ranking_duration ?? '1h')
+        setNetFlowRankingLimit(ind?.netflow_ranking_limit ?? 10)
+        setEnablePriceRanking(ind?.enable_price_ranking ?? false)
+        setPriceRankingDuration(ind?.price_ranking_duration ?? '1h')
+        setPriceRankingLimit(ind?.price_ranking_limit ?? 10)
         setDataDurations(
           ind?.data_durations && ind.data_durations.length
             ? ind.data_durations
@@ -252,6 +305,28 @@ export function EditorStepPage() {
         enableRsi,
         enableOi,
         enableFundingRate,
+        enableAtr,
+        enableBoll,
+        enableVolume,
+        emaPeriods,
+        rsiPeriods,
+        atrPeriods,
+        bollPeriods,
+        enableBinanceTechnicalData,
+        enableBinanceSentimentData,
+        binanceTechnicalIntervals,
+        primaryCount,
+        longerTimeframe,
+        longerCount,
+        enableOIRanking,
+        oiRankingDuration,
+        oiRankingLimit,
+        enableNetFlowRanking,
+        netFlowRankingDuration,
+        netFlowRankingLimit,
+        enablePriceRanking,
+        priceRankingDuration,
+        priceRankingLimit,
         tradingStyle,
         maxPositions,
         minPositionSize,
@@ -469,85 +544,212 @@ export function EditorStepPage() {
 
         <fieldset className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg-deeper p-4">
           <legend className="px-2 text-sm font-semibold text-nofx-text">
-            Data sources for LLM
+            Basic indicators
           </legend>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <ToggleChip label="EMA" active={enableEma} onClick={() => setEnableEma(!enableEma)} />
+            <ToggleChip label="MACD" active={enableMacd} onClick={() => setEnableMacd(!enableMacd)} />
+            <ToggleChip label="RSI" active={enableRsi} onClick={() => setEnableRsi(!enableRsi)} />
+            <ToggleChip label="ATR" active={enableAtr} onClick={() => setEnableAtr(!enableAtr)} />
+            <ToggleChip label="BOLL" active={enableBoll} onClick={() => setEnableBoll(!enableBoll)} />
+            <ToggleChip label="Volume" active={enableVolume} onClick={() => setEnableVolume(!enableVolume)} />
+          </div>
+
+          {enableEma && (
+            <div className="mb-4">
+              <span className="text-sm text-nofx-text-muted">EMA periods</span>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {EMA_PERIODS.map((p) => (
+                  <ToggleChip key={p} label={String(p)} active={emaPeriods.includes(p)} onClick={() => setEmaPeriods(toggleNumberList(emaPeriods, p))} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {enableRsi && (
+            <div className="mb-4">
+              <span className="text-sm text-nofx-text-muted">RSI periods</span>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {RSI_PERIODS.map((p) => (
+                  <ToggleChip key={p} label={String(p)} active={rsiPeriods.includes(p)} onClick={() => setRsiPeriods(toggleNumberList(rsiPeriods, p))} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {enableAtr && (
+            <div className="mb-4">
+              <span className="text-sm text-nofx-text-muted">ATR periods</span>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {ATR_PERIODS.map((p) => (
+                  <ToggleChip key={p} label={String(p)} active={atrPeriods.includes(p)} onClick={() => setAtrPeriods(toggleNumberList(atrPeriods, p))} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {enableBoll && (
+            <div className="mb-4">
+              <span className="text-sm text-nofx-text-muted">BOLL periods</span>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {BOLL_PERIODS.map((p) => (
+                  <ToggleChip key={p} label={String(p)} active={bollPeriods.includes(p)} onClick={() => setBollPeriods(toggleNumberList(bollPeriods, p))} />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mb-4">
-            <span className="text-sm text-nofx-text-muted">
-              Per-coin data to include in the prompt
-            </span>
-            <div className="mt-1 flex flex-wrap gap-2">
-              <ToggleChip
-                label="AI500"
-                active={enableAI500Data}
-                onClick={() => setEnableAI500Data(!enableAI500Data)}
-              />
-              <ToggleChip
-                label="OI"
-                active={enableOIData}
-                onClick={() => setEnableOIData(!enableOIData)}
-              />
-              <ToggleChip
-                label="Netflow"
-                active={enableNetflowData}
-                onClick={() => setEnableNetflowData(!enableNetflowData)}
-              />
-              <ToggleChip
-                label="Price"
-                active={enablePriceData}
-                onClick={() => setEnablePriceData(!enablePriceData)}
-              />
+            <span className="text-sm text-nofx-text-muted">Candles</span>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-nofx-text-muted">Primary count</span>
+                <input
+                  type="number"
+                  min={10}
+                  max={200}
+                  value={primaryCount}
+                  onChange={(e) => setPrimaryCount(Number(e.target.value))}
+                  className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {TIMEFRAMES.map((tf) => (
+                  <ToggleChip key={tf} label={tf} active={timeframes.includes(tf)} onClick={() => toggleTimeframe(tf)} />
+                ))}
+              </div>
             </div>
           </div>
 
-          {enableOIData || enableNetflowData || enablePriceData ? (
+          <div className="mb-4">
+            <span className="text-sm text-nofx-text-muted">Multi-timeframe</span>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <select
+                value={longerTimeframe}
+                onChange={(e) => setLongerTimeframe(e.target.value)}
+                className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
+              >
+                <option value="">Disabled</option>
+                {TIMEFRAMES.map((tf) => (
+                  <option key={tf} value={tf}>{tf}</option>
+                ))}
+              </select>
+              {longerTimeframe && (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-nofx-text-muted">Count</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={200}
+                    value={longerCount}
+                    onChange={(e) => setLongerCount(Number(e.target.value))}
+                    className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg-deeper p-4">
+          <legend className="px-2 text-sm font-semibold text-nofx-text">
+            Data sources
+          </legend>
+          <div className="mb-4">
+            <span className="text-sm text-nofx-text-muted">Per-coin data</span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <ToggleChip label="AI500" active={enableAI500Data} onClick={() => setEnableAI500Data(!enableAI500Data)} />
+              <ToggleChip label="OI" active={enableOIData} onClick={() => setEnableOIData(!enableOIData)} />
+              <ToggleChip label="Netflow" active={enableNetflowData} onClick={() => setEnableNetflowData(!enableNetflowData)} />
+              <ToggleChip label="Price" active={enablePriceData} onClick={() => setEnablePriceData(!enablePriceData)} />
+            </div>
+          </div>
+
+          {(enableOIData || enableNetflowData || enablePriceData) && (
             <div className="mb-4">
-              <span className="text-sm text-nofx-text-muted">
-                Data durations
-              </span>
+              <span className="text-sm text-nofx-text-muted">Data durations</span>
               <div className="mt-1 flex flex-wrap gap-2">
                 {DURATIONS.map((d) => (
+                  <ToggleChip key={d} label={d} active={dataDurations.includes(d)} onClick={() => toggleDuration(d)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mb-4">
+            <span className="text-sm text-nofx-text-muted">Binance data</span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <ToggleChip label="Binance Technical" active={enableBinanceTechnicalData} onClick={() => setEnableBinanceTechnicalData(!enableBinanceTechnicalData)} />
+              <ToggleChip label="Binance Sentiment" active={enableBinanceSentimentData} onClick={() => setEnableBinanceSentimentData(!enableBinanceSentimentData)} />
+            </div>
+          </div>
+
+          {enableBinanceTechnicalData && (
+            <div className="mb-4">
+              <span className="text-sm text-nofx-text-muted">Binance technical intervals</span>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {(['1h', '24h'] as const).map((iv) => (
                   <ToggleChip
-                    key={d}
-                    label={d}
-                    active={dataDurations.includes(d)}
-                    onClick={() => toggleDuration(d)}
+                    key={iv}
+                    label={iv}
+                    active={binanceTechnicalIntervals.includes(iv)}
+                    onClick={() =>
+                      setBinanceTechnicalIntervals((prev) =>
+                        prev.includes(iv) ? prev.filter((x) => x !== iv) : [...prev, iv]
+                      )
+                    }
                   />
                 ))}
               </div>
             </div>
-          ) : null}
+          )}
 
-          <div>
-            <span className="text-sm text-nofx-text-muted">
-              Basic indicators
-            </span>
-            <div className="mt-1 flex flex-wrap gap-2">
-              <ToggleChip
-                label="EMA20"
-                active={enableEma}
-                onClick={() => setEnableEma(!enableEma)}
-              />
-              <ToggleChip
-                label="MACD"
-                active={enableMacd}
-                onClick={() => setEnableMacd(!enableMacd)}
-              />
-              <ToggleChip
-                label="RSI7"
-                active={enableRsi}
-                onClick={() => setEnableRsi(!enableRsi)}
-              />
-              <ToggleChip
-                label="OI"
-                active={enableOi}
-                onClick={() => setEnableOi(!enableOi)}
-              />
-              <ToggleChip
-                label="Funding rate"
-                active={enableFundingRate}
-                onClick={() => setEnableFundingRate(!enableFundingRate)}
-              />
-            </div>
+          <hr className="my-4 border-[rgba(26,24,19,0.14)]" />
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-nofx-text-muted">Rankings</h4>
+
+          <div className="mb-3">
+            <ToggleChip label="OI Ranking" active={enableOIRanking} onClick={() => setEnableOIRanking(!enableOIRanking)} />
+            {enableOIRanking && (
+              <div className="mt-2 flex items-center gap-3">
+                <select value={oiRankingDuration} onChange={(e) => setOIRankingDuration(e.target.value)} className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text">
+                  {RANKING_DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-nofx-text-muted">Limit</span>
+                  <input type="number" min={1} max={50} value={oiRankingLimit} onChange={(e) => setOIRankingLimit(Number(e.target.value))} className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mb-3">
+            <ToggleChip label="Netflow Ranking" active={enableNetFlowRanking} onClick={() => setEnableNetFlowRanking(!enableNetFlowRanking)} />
+            {enableNetFlowRanking && (
+              <div className="mt-2 flex items-center gap-3">
+                <select value={netFlowRankingDuration} onChange={(e) => setNetFlowRankingDuration(e.target.value)} className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text">
+                  {RANKING_DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-nofx-text-muted">Limit</span>
+                  <input type="number" min={1} max={50} value={netFlowRankingLimit} onChange={(e) => setNetFlowRankingLimit(Number(e.target.value))} className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mb-3">
+            <ToggleChip label="Price Ranking" active={enablePriceRanking} onClick={() => setEnablePriceRanking(!enablePriceRanking)} />
+            {enablePriceRanking && (
+              <div className="mt-2 flex items-center gap-3">
+                <select value={priceRankingDuration} onChange={(e) => setPriceRankingDuration(e.target.value)} className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text">
+                  {RANKING_DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-nofx-text-muted">Limit</span>
+                  <input type="number" min={1} max={50} value={priceRankingLimit} onChange={(e) => setPriceRankingLimit(Number(e.target.value))} className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text" />
+                </div>
+              </div>
+            )}
           </div>
         </fieldset>
 
@@ -568,20 +770,6 @@ export function EditorStepPage() {
                 active={!isCross}
                 onClick={() => setIsCross(false)}
               />
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <span className="text-sm text-nofx-text-muted">Candles</span>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {TIMEFRAMES.map((tf) => (
-                <ToggleChip
-                  key={tf}
-                  label={tf}
-                  active={timeframes.includes(tf)}
-                  onClick={() => toggleTimeframe(tf)}
-                />
-              ))}
             </div>
           </div>
 
