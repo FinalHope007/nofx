@@ -5,11 +5,15 @@ export function defaultDataSources(scope: ScopeUnit | null): {
   enableOIData: boolean
   enableNetflowData: boolean
   enablePriceData: boolean
+  enableBinanceTechnicalData: boolean
+  enableBinanceSentimentData: boolean
 } {
   return {
     enableAI500Data: scope?.source_type === 'ai500',
     enableOIData: scope?.source_type === 'nofxos_oi',
     enableNetflowData: scope?.source_type === 'nofxos_netflow',
     enablePriceData: scope?.source_type === 'nofxos_price',
+    enableBinanceTechnicalData: scope?.source_type === 'binance_technical',
+    enableBinanceSentimentData: scope?.source_type === 'binance_sentiment',
   }
 }

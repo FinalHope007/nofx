@@ -23,6 +23,9 @@ export interface StrategyEditorForm {
   enableOIData?: boolean
   enableNetflowData?: boolean
   enablePriceData?: boolean
+  enableBinanceTechnicalData?: boolean
+  enableBinanceSentimentData?: boolean
+  binanceTechnicalIntervals?: ('1h' | '24h')[]
   dataDurations?: string[]
   enableEma?: boolean
   enableMacd?: boolean
@@ -294,6 +297,9 @@ export function buildStrategyConfig(form: StrategyEditorForm): StrategyConfig {
         enable_oi_data: form.enableOIData ?? false,
         enable_netflow_data: form.enableNetflowData ?? false,
         enable_price_data: form.enablePriceData ?? false,
+        enable_binance_technical_data: form.enableBinanceTechnicalData ?? false,
+        enable_binance_sentiment_data: form.enableBinanceSentimentData ?? false,
+        binance_technical_intervals: form.binanceTechnicalIntervals?.length ? form.binanceTechnicalIntervals : undefined,
         data_durations: form.dataDurations && form.dataDurations.length ? form.dataDurations : undefined,
         nofxos_api_key: '',
         enable_quant_data: false,

@@ -26,6 +26,8 @@ describe('defaultDataSources', () => {
       enableOIData: false,
       enableNetflowData: false,
       enablePriceData: false,
+      enableBinanceTechnicalData: false,
+      enableBinanceSentimentData: false,
     })
   })
 
@@ -47,6 +49,8 @@ describe('defaultDataSources', () => {
       enableOIData: false,
       enableNetflowData: false,
       enablePriceData: false,
+      enableBinanceTechnicalData: false,
+      enableBinanceSentimentData: false,
     })
   })
 
@@ -56,6 +60,8 @@ describe('defaultDataSources', () => {
       enableOIData: false,
       enableNetflowData: false,
       enablePriceData: false,
+      enableBinanceTechnicalData: false,
+      enableBinanceSentimentData: false,
     })
   })
 })

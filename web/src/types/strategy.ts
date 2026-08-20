@@ -213,6 +213,9 @@ export interface IndicatorConfig {
   enable_netflow_data?: boolean;
   enable_price_data?: boolean;
   data_durations?: string[];
+  enable_binance_technical_data?: boolean;
+  enable_binance_sentiment_data?: boolean;
+  binance_technical_intervals?: ('1h' | '24h')[];
 }
 
 export interface KlineConfig {
