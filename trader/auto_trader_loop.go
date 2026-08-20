@@ -640,14 +640,10 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		CandidateCoins: candidateCoins,
 	}
 
-	// Prefetch Binance per-coin detail for the candidate pool in the background
-	// (bounded workers) so request load is spread and warm by prompt time.
-	if at.strategyEngine != nil && len(candidateCoins) > 0 {
-		go func(symbols []string) {
-			runPrefetchJobs(symbols, 3, func(sym string) {
-				at.strategyEngine.PrefetchBinanceDetails(context.Background(), []string{sym})
-			})
-		}(candidateSymbols(candidateCoins))
+	// Schedule Binance pre-cycle prefetch for next cycle.
+	// The prefetch fires ~145s before the next ticker.C, warming the cache.
+	if at.strategyEngine != nil {
+		at.scheduleBinancePrefetch()
 	}
 
 	// 7. Add recent closed trades (if store is available)
@@ -823,6 +819,94 @@ func sortDecisionsByPriority(decisions []kernel.Decision) []kernel.Decision {
 	}
 
 	return sorted
+}
+
+// scheduleBinancePrefetch schedules a prefetch of Binance per-coin detail
+// to fire leadTime before the next cycle trigger. The prefetch warms the
+// 10-minute TTL cache so attachPerCoinSignals finds cache hits at cycle time.
+func (at *AutoTrader) scheduleBinancePrefetch() {
+	if at.strategyEngine == nil {
+		return
+	}
+	cfg := at.strategyEngine.GetConfig()
+	if cfg == nil {
+		return
+	}
+
+	// Calculate lead time based on enabled Binance data sources.
+	requestsPerCoin := 0
+	if cfg.Indicators.EnableBinanceTechnicalData {
+		intervals := cfg.Indicators.BinanceTechnicalIntervals
+		if len(intervals) == 0 {
+			intervals = []string{"1h"}
+		}
+		requestsPerCoin += len(intervals)
+	}
+	if cfg.Indicators.EnableBinanceSentimentData {
+		requestsPerCoin++
+	}
+	if requestsPerCoin == 0 {
+		return // no Binance data sources enabled, no prefetch needed
+	}
+
+	const prefetchPoolSize = 30
+	const delayPerRequest = 1500 * time.Millisecond
+	const bufferSeconds = 10 * time.Second
+	leadTime := time.Duration(requestsPerCoin)*prefetchPoolSize*delayPerRequest + bufferSeconds
+
+	// If the cycle interval is shorter than the lead time, skip prefetch.
+	if at.config.ScanInterval <= leadTime {
+		logger.Infof("⏭️ Scan interval (%v) shorter than prefetch lead time (%v), skipping prefetch",
+			at.config.ScanInterval, leadTime)
+		return
+	}
+
+	delay := at.config.ScanInterval - leadTime
+	logger.Infof("🔄 Binance prefetch scheduled in %v (lead=%v, req/coin=%d, pool=%d)",
+		delay, leadTime, requestsPerCoin, prefetchPoolSize)
+
+	// Cancel any existing prefetch timer
+	if at.prefetchTimer != nil {
+		at.prefetchTimer.Stop()
+	}
+
+	at.prefetchTimer = time.AfterFunc(delay, func() {
+		// Check if trader is still running
+		at.isRunningMutex.RLock()
+		running := at.isRunning
+		at.isRunningMutex.RUnlock()
+		if !running {
+			return
+		}
+
+		at.logInfof("🔄 Starting Binance pre-cycle prefetch...")
+		start := time.Now()
+
+		// Get fresh candidate list at prefetch time
+		coins, err := at.strategyEngine.GetCandidateCoins()
+		if err != nil {
+			at.logWarnf("⚠️ Prefetch: failed to get candidate coins: %v", err)
+			return
+		}
+		if len(coins) == 0 {
+			return
+		}
+
+		// Take top 30 by score (already sorted from GetCandidateCoins)
+		pool := coins
+		if len(pool) > prefetchPoolSize {
+			pool = pool[:prefetchPoolSize]
+		}
+		symbols := candidateSymbols(pool)
+
+		// Rate-limited sequential prefetch
+		runRateLimitedPrefetch(symbols, delayPerRequest, func(sym string) {
+			at.strategyEngine.PrefetchBinanceDetails(context.Background(), []string{sym})
+		})
+
+		elapsed := time.Since(start)
+		at.logInfof("✅ Binance prefetch complete: %d symbols in %v", len(symbols), elapsed)
+	})
 }
 
 // checkClaw402Balance checks USDC balance and logs warnings if low
