@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestRunPrefetchJobsBoundsConcurrency(t *testing.T) {
@@ -43,5 +44,32 @@ func TestRunPrefetchJobsBoundsConcurrency(t *testing.T) {
 	<-doneCh
 	if max > 3 {
 		t.Fatalf("concurrency exceeded worker bound: max=%d", max)
+	}
+}
+
+func TestRunRateLimitedPrefetchRespectsDelay(t *testing.T) {
+	var timestamps []time.Time
+	var mu sync.Mutex
+	symbols := []string{"A", "B", "C"}
+
+	start := time.Now()
+	runRateLimitedPrefetch(symbols, 50*time.Millisecond, func(sym string) {
+		mu.Lock()
+		timestamps = append(timestamps, time.Now())
+		mu.Unlock()
+	})
+	elapsed := time.Since(start)
+
+	if len(timestamps) != 3 {
+		t.Fatalf("expected 3 invocations, got %d", len(timestamps))
+	}
+	for i := 1; i < len(timestamps); i++ {
+		gap := timestamps[i].Sub(timestamps[i-1])
+		if gap < 45*time.Millisecond {
+			t.Fatalf("gap between %d and %d was %v, expected >=50ms", i-1, i, gap)
+		}
+	}
+	if elapsed < 90*time.Millisecond {
+		t.Fatalf("total elapsed %v, expected >=90ms", elapsed)
 	}
 }
