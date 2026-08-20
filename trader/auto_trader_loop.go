@@ -640,6 +640,16 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		CandidateCoins: candidateCoins,
 	}
 
+	// Prefetch Binance per-coin detail for the candidate pool in the background
+	// (bounded workers) so request load is spread and warm by prompt time.
+	if at.strategyEngine != nil && len(candidateCoins) > 0 {
+		go func(symbols []string) {
+			runPrefetchJobs(symbols, 3, func(sym string) {
+				at.strategyEngine.PrefetchBinanceDetails(context.Background(), []string{sym})
+			})
+		}(candidateSymbols(candidateCoins))
+	}
+
 	// 7. Add recent closed trades (if store is available)
 	if at.store != nil {
 		// Get recent 10 closed trades for AI context
