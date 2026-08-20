@@ -197,6 +197,7 @@ type AutoTrader struct {
 	gridState             *GridState         // Grid trading state (only used when StrategyType == "grid_trading")
 	claw402WalletAddr     string             // Claw402 wallet address (derived from private key at start)
 	consecutiveAIFailures int                // Consecutive AI call failures
+	prefetchTimer         *time.Timer        // Pre-cycle Binance prefetch timer (nil when not scheduled)
 	runtimeHealthMu       sync.RWMutex       // Guards safe mode + AI wallet health (loop writes, API reads)
 	safeMode              bool               // Safe mode: no new positions, protect existing ones
 	safeModeReason        string             // Why safe mode was activated
@@ -612,6 +613,12 @@ func (at *AutoTrader) Stop() {
 	}
 	at.isRunning = false
 	at.isRunningMutex.Unlock()
+
+	// Cancel any pending prefetch timer
+	if at.prefetchTimer != nil {
+		at.prefetchTimer.Stop()
+		at.prefetchTimer = nil
+	}
 
 	close(at.stopMonitorCh) // Notify monitoring goroutine to stop
 	at.monitorWg.Wait()     // Wait for monitoring goroutine to finish
