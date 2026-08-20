@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"nofx/logger"
@@ -186,7 +187,8 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 	}
 	cfg := engine.GetConfig()
 	if !cfg.Indicators.EnableAI500Data && !cfg.Indicators.EnableOIData &&
-		!cfg.Indicators.EnableNetflowData && !cfg.Indicators.EnablePriceData {
+		!cfg.Indicators.EnableNetflowData && !cfg.Indicators.EnablePriceData &&
+		!cfg.Indicators.EnableBinanceTechnicalData && !cfg.Indicators.EnableBinanceSentimentData {
 		return nil
 	}
 
@@ -261,6 +263,65 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 		sig.Netflow = nfByDur
 		sig.Price = pxByDur
 		out[sym] = sig
+	}
+
+	// Binance Opportunity per-coin detail (free, per-symbol; read from TTL cache,
+	// fall back to a synchronous fetch on miss).
+	apiCtx := ctx.Ctx
+	if apiCtx == nil {
+		apiCtx = context.Background()
+	}
+	if cfg.Indicators.EnableBinanceTechnicalData {
+		intervals := cfg.Indicators.BinanceTechnicalIntervals
+		if len(intervals) == 0 {
+			intervals = []string{"1h"}
+		}
+		for _, iv := range intervals {
+			for sym := range symSet {
+				key := "technical|" + sym + "|" + iv
+				val, ok := engine.binanceDetail(key)
+				if !ok {
+					var fetchErr error
+					val, fetchErr = engine.opportunity.GetAssetDetails(apiCtx, strings.TrimSuffix(sym, "USDT"), "technical", iv)
+					if fetchErr != nil {
+						logger.Warnf("⚠️ Binance technical detail fetch failed (%s %s): %v", sym, iv, fetchErr)
+						continue
+					}
+					engine.cacheBinanceDetail(key, val)
+				}
+				sig := out[sym]
+				if sig.BinanceTechnical == nil {
+					sig.BinanceTechnical = make(map[string]string)
+				}
+				for k, v := range val {
+					sig.BinanceTechnical[iv+"|"+k] = v
+				}
+				out[sym] = sig
+			}
+		}
+	}
+	if cfg.Indicators.EnableBinanceSentimentData {
+		for sym := range symSet {
+			key := "sentiment|" + sym
+			val, ok := engine.binanceDetail(key)
+			if !ok {
+				var fetchErr error
+				val, fetchErr = engine.opportunity.GetAssetDetails(apiCtx, strings.TrimSuffix(sym, "USDT"), "sentiment", "24h")
+				if fetchErr != nil {
+					logger.Warnf("⚠️ Binance sentiment detail fetch failed (%s): %v", sym, fetchErr)
+					continue
+				}
+				engine.cacheBinanceDetail(key, val)
+			}
+			sig := out[sym]
+			if sig.BinanceSentiment == nil {
+				sig.BinanceSentiment = make(map[string]string)
+			}
+			for k, v := range val {
+				sig.BinanceSentiment[k] = v
+			}
+			out[sym] = sig
+		}
 	}
 
 	engine.SetPerCoinSignals(out)

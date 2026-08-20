@@ -114,6 +114,7 @@ type Context struct {
 	BTCETHLeverage     int                                `json:"-"`
 	AltcoinLeverage    int                                `json:"-"`
 	Timeframes         []string                           `json:"-"`
+	Ctx                context.Context                    `json:"-"` // Go context for cancellable API calls
 }
 
 // Decision AI trading decision
@@ -188,16 +189,19 @@ type OIDeltaData struct {
 // PerCoinSignal carries the free per-coin enrichment data for one symbol
 // (AI500 score, OI / netflow / price change per selected duration).
 type PerCoinSignal struct {
-	AI500   *nofxos.CoinData                        // may be nil
-	OI      map[string]map[string]nofxos.OIPosition // duration -> list(top/low) -> data
-	Netflow map[string]map[string]nofxos.NetFlowPosition
-	Price   map[string]map[string]nofxos.PriceRankingItem
+	AI500             *nofxos.CoinData                        // may be nil
+	OI                map[string]map[string]nofxos.OIPosition // duration -> list(top/low) -> data
+	Netflow           map[string]map[string]nofxos.NetFlowPosition
+	Price             map[string]map[string]nofxos.PriceRankingItem
+	BinanceTechnical  map[string]string // flattened technical detail labels (may be nil)
+	BinanceSentiment  map[string]string // flattened sentiment detail labels (may be nil)
 }
 
 // binanceOpportunityGetter abstracts the Binance Opportunity client for
 // testability. *binance.OpportunityClient satisfies this interface.
 type binanceOpportunityGetter interface {
 	GetOpportunityAssets(ctx context.Context, interval, scene string) ([]binance.OpportunityAsset, error)
+	GetAssetDetails(ctx context.Context, symbol, scene, interval string) (map[string]string, error)
 }
 
 // StrategyEngine strategy execution engine
@@ -213,7 +217,8 @@ type StrategyEngine struct {
 	trending   *nofxos.FreeTrendingClient
 
 	// Binance Opportunity client (technical + sentiment scopes)
-	opportunity binanceOpportunityGetter
+	opportunity     binanceOpportunityGetter
+	binanceDetails  *binanceDetailCache // free Binance per-coin detail TTL cache
 
 	recentDecisions []*store.DecisionRecord // prior-cycle assistant responses (per-trader)
 
@@ -227,6 +232,10 @@ var newOpportunityClient = func() *binance.OpportunityClient { return binance.Ne
 // NewStrategyEngine creates strategy execution engine.
 // claw402WalletKey is optional — if provided, nofxos data requests are routed through claw402.
 func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string) *StrategyEngine {
+	if config == nil {
+		defaultCfg := store.GetDefaultStrategyConfig("en")
+		config = &defaultCfg
+	}
 	// Create NofxOS client with API key from config
 	apiKey := config.Indicators.NofxOSAPIKey
 	if apiKey == "" {
@@ -277,6 +286,7 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 			freeClient:         freeVergex,
 			trending:           trendingClient,
 			opportunity:        opportunityClient,
+			binanceDetails:     newBinanceDetailCache(),
 		}
 	}
 
@@ -288,6 +298,7 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 		freeClient:         freeVergex,
 		trending:           trendingClient,
 		opportunity:        opportunityClient,
+		binanceDetails:     newBinanceDetailCache(),
 	}
 }
 
@@ -364,6 +375,64 @@ func (e *StrategyEngine) PerCoinSignalFor(symbol string) (PerCoinSignal, bool) {
 	}
 	s, ok := e.perCoinSignals[symbol]
 	return s, ok
+}
+
+func (e *StrategyEngine) binanceDetail(key string) (map[string]string, bool) {
+	return e.binanceDetails.get(key)
+}
+
+func (e *StrategyEngine) cacheBinanceDetail(key string, v map[string]string) {
+	e.binanceDetails.set(key, v)
+}
+
+// PrefetchBinanceDetails populates the binance detail cache for the given symbols,
+// gated by the EnableBinanceTechnicalData / EnableBinanceSentimentData flags.
+// This is safe to call from the trader loop before a cycle starts.
+func (e *StrategyEngine) PrefetchBinanceDetails(ctx context.Context, symbols []string) error {
+	if e == nil || e.binanceDetails == nil || e.opportunity == nil {
+		return nil
+	}
+	cfg := e.GetConfig()
+	if cfg == nil {
+		return nil
+	}
+	if !cfg.Indicators.EnableBinanceTechnicalData && !cfg.Indicators.EnableBinanceSentimentData {
+		return nil
+	}
+	for _, sym := range symbols {
+		base := strings.TrimSuffix(sym, "USDT")
+		if cfg.Indicators.EnableBinanceTechnicalData {
+			intervals := cfg.Indicators.BinanceTechnicalIntervals
+			if len(intervals) == 0 {
+				intervals = []string{"1h"}
+			}
+			for _, iv := range intervals {
+				key := "technical|" + sym + "|" + iv
+				if _, ok := e.binanceDetail(key); ok {
+					continue
+				}
+				val, err := e.opportunity.GetAssetDetails(ctx, base, "technical", iv)
+				if err != nil {
+					logger.Warnf("⚠️ Prefetch technical detail failed (%s %s): %v", sym, iv, err)
+					continue
+				}
+				e.cacheBinanceDetail(key, val)
+			}
+		}
+		if cfg.Indicators.EnableBinanceSentimentData {
+			key := "sentiment|" + sym
+			if _, ok := e.binanceDetail(key); ok {
+				continue
+			}
+			val, err := e.opportunity.GetAssetDetails(ctx, base, "sentiment", "24h")
+			if err != nil {
+				logger.Warnf("⚠️ Prefetch sentiment detail failed (%s): %v", sym, err)
+				continue
+			}
+			e.cacheBinanceDetail(key, val)
+		}
+	}
+	return nil
 }
 
 // ============================================================================

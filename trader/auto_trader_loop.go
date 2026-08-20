@@ -1,6 +1,7 @@
 package trader
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -624,6 +625,7 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		CallCount:       at.callCount,
 		BTCETHLeverage:  btcEthLeverage,
 		AltcoinLeverage: altcoinLeverage,
+		Ctx:             context.Background(),
 		Account: kernel.AccountInfo{
 			TotalEquity:      totalEquity,
 			AvailableBalance: availableBalance,

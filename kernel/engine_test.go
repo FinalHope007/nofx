@@ -17,6 +17,10 @@ func (f *fakeOpportunityClient) GetOpportunityAssets(_ context.Context, _, _ str
 	}, nil
 }
 
+func (f *fakeOpportunityClient) GetAssetDetails(_ context.Context, _, _, _ string) (map[string]string, error) {
+	return map[string]string{"fake_label": "fake_value"}, nil
+}
+
 func TestGetCandidateCoinsBinanceTechnical(t *testing.T) {
 	cfg := &store.StrategyConfig{}
 	cfg.CoinSource.SourceType = "binance_technical"
