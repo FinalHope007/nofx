@@ -448,6 +448,9 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 		minOITHRESHOLDUSDT = 15_000_000 // preserve historical default
 	}
 
+	maxCandidates := store.MaxCandidateCoins
+	survivors := 0
+
 	for _, coin := range ctx.CandidateCoins {
 		if _, exists := ctx.MarketDataMap[coin.Symbol]; exists {
 			continue
@@ -472,6 +475,12 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 		}
 
 		ctx.MarketDataMap[coin.Symbol] = data
+		survivors++
+
+		if survivors >= maxCandidates {
+			logger.Infof("📊 Reached %d survivors (max=%d), stopping market data fetch early", survivors, maxCandidates)
+			break
+		}
 	}
 
 	logger.Infof("📊 Successfully fetched multi-timeframe market data for %d coins", len(ctx.MarketDataMap))
