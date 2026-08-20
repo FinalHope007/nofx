@@ -76,7 +76,21 @@ func (c *OpportunityClient) GetAssetDetails(ctx context.Context, symbol, scene, 
 	if err != nil {
 		return nil, fmt.Errorf("binance opportunity: request: %w", err)
 	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		resp.Body.Close()
+		time.Sleep(1500 * time.Millisecond)
+		resp, err = c.http.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("binance opportunity: retry request: %w", err)
+		}
+	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("binance opportunity: HTTP %d", resp.StatusCode)
+	}
+
 	var parsed opportunityDetailResponse
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return nil, fmt.Errorf("binance opportunity: decode: %w", err)

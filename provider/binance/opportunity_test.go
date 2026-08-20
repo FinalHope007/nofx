@@ -66,3 +66,34 @@ func TestGetAssetDetails(t *testing.T) {
 		t.Fatalf("expected summary, got %q", got["technical_summary_1h"])
 	}
 }
+
+func TestGetAssetDetailsRetryOn429(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"code":"429","message":"rate limit exceeded"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"code":"000000","data":{"metrics":{
+			"technical_score_1h":{"value":"7.85","valueLabel":"Positive"}
+		}},"success":true}`))
+	}))
+	defer srv.Close()
+
+	c := NewOpportunityClient()
+	c.baseURL = srv.URL
+	got, err := c.GetAssetDetails(context.Background(), "BTC", "technical", "1h")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["technical_score_1h"] != "Positive" {
+		t.Fatalf("expected score label after retry, got %q", got["technical_score_1h"])
+	}
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts (1 fail + 1 retry), got %d", attempts)
+	}
+}
