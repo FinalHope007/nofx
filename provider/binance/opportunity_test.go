@@ -9,6 +9,7 @@ import (
 )
 
 func TestGetOpportunityAssetsTechnical(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("type") != "technical" || r.URL.Query().Get("interval") != "1h" {
 			t.Errorf("unexpected query: %v", r.URL.Query())
@@ -36,6 +37,7 @@ func TestGetOpportunityAssetsTechnical(t *testing.T) {
 }
 
 func TestGetAssetDetails(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/asset-details" {
 			t.Errorf("unexpected path: %s", r.URL.Path)

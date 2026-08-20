@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	"nofx/security"
 )
 
 type OpportunityClient struct {
@@ -17,7 +20,7 @@ type OpportunityClient struct {
 const opportunityBaseURL = "https://www.binance.com/bapi/apex/v1/friendly/apex/web/opportunity"
 
 func NewOpportunityClient() *OpportunityClient {
-	return &OpportunityClient{http: &http.Client{}, baseURL: opportunityBaseURL}
+	return &OpportunityClient{http: security.SafeHTTPClient(30 * time.Second), baseURL: opportunityBaseURL}
 }
 
 type opportunityListResponse struct {
