@@ -868,6 +868,7 @@ func (at *AutoTrader) scheduleBinancePrefetch() {
 	// Cancel any existing prefetch timer
 	if at.prefetchTimer != nil {
 		at.prefetchTimer.Stop()
+		at.prefetchTimer = nil
 	}
 
 	at.prefetchTimer = time.AfterFunc(delay, func() {
