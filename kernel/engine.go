@@ -988,23 +988,33 @@ func (e *StrategyEngine) getBinanceOpportunityCoins(scene, interval, direction s
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch Binance %s opportunity: %w", scene, err)
 	}
-	sort.Slice(assets, func(i, j int) bool {
-		if direction == "bottom" {
-			return assets[i].Score < assets[j].Score
-		}
-		return assets[i].Score > assets[j].Score
-	})
-	if len(assets) > limit {
-		assets = assets[:limit]
+	// Map all spot symbols to perp FIRST, then filter and sort.
+	// This avoids losing assets due to early truncation before the mapping check.
+	type scoredPerp struct {
+		symbol string
+		score  float64
 	}
-	candidates := make([]CandidateCoin, 0, len(assets))
+	mapped := make([]scoredPerp, 0, len(assets))
 	for _, a := range assets {
 		perp := mapSpotToPerp(a.Symbol)
 		if perp == "" {
 			continue
 		}
+		mapped = append(mapped, scoredPerp{symbol: perp, score: a.Score})
+	}
+	sort.Slice(mapped, func(i, j int) bool {
+		if direction == "bottom" {
+			return mapped[i].score < mapped[j].score
+		}
+		return mapped[i].score > mapped[j].score
+	})
+	if len(mapped) > limit {
+		mapped = mapped[:limit]
+	}
+	candidates := make([]CandidateCoin, 0, len(mapped))
+	for _, m := range mapped {
 		candidates = append(candidates, CandidateCoin{
-			Symbol:  perp,
+			Symbol:  m.symbol,
 			Sources: []string{"binance_" + scene},
 		})
 	}

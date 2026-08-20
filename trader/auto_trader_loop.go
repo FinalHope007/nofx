@@ -761,7 +761,8 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 
 	// 12. Attach free per-coin prompt data sources (candidates + positions)
 	if strategyConfig.Indicators.EnableAI500Data || strategyConfig.Indicators.EnableOIData ||
-		strategyConfig.Indicators.EnableNetflowData || strategyConfig.Indicators.EnablePriceData {
+		strategyConfig.Indicators.EnableNetflowData || strategyConfig.Indicators.EnablePriceData ||
+		strategyConfig.Indicators.EnableBinanceTechnicalData || strategyConfig.Indicators.EnableBinanceSentimentData {
 		if err := kernel.AttachPerCoinSignals(ctx, at.strategyEngine); err != nil {
 			at.logWarnf("⚠️ Failed to attach per-coin signal data: %v", err)
 		}
