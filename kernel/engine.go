@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"nofx/logger"
 	"nofx/market"
+	"nofx/provider/binance"
 	"nofx/provider/hyperliquid"
 	"nofx/provider/nofxos"
 	"nofx/provider/vergex"
@@ -193,6 +194,12 @@ type PerCoinSignal struct {
 	Price   map[string]map[string]nofxos.PriceRankingItem
 }
 
+// binanceOpportunityGetter abstracts the Binance Opportunity client for
+// testability. *binance.OpportunityClient satisfies this interface.
+type binanceOpportunityGetter interface {
+	GetOpportunityAssets(ctx context.Context, interval, scene string) ([]binance.OpportunityAsset, error)
+}
+
 // StrategyEngine strategy execution engine
 type StrategyEngine struct {
 	config             *store.StrategyConfig
@@ -205,10 +212,17 @@ type StrategyEngine struct {
 	freeClient *vergex.Client
 	trending   *nofxos.FreeTrendingClient
 
+	// Binance Opportunity client (technical + sentiment scopes)
+	opportunity binanceOpportunityGetter
+
 	recentDecisions []*store.DecisionRecord // prior-cycle assistant responses (per-trader)
 
 	exchange string // trader exchange used to pick the kline source
 }
+
+// newOpportunityClient is the factory used by NewStrategyEngine to create the
+// Binance Opportunity client. Tests can override this to inject fakes.
+var newOpportunityClient = func() *binance.OpportunityClient { return binance.NewOpportunityClient() }
 
 // NewStrategyEngine creates strategy execution engine.
 // claw402WalletKey is optional — if provided, nofxos data requests are routed through claw402.
@@ -225,6 +239,7 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 		logger.Warnf("⚠️ Failed to init free Vergex client: %v (using paid path only)", err)
 	}
 	trendingClient := nofxos.NewFreeTrendingClient()
+	opportunityClient := newOpportunityClient()
 
 	// If claw402 wallet key is provided (from trader's AI config), route through claw402
 	walletKey := ""
@@ -261,6 +276,7 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 			perCoinSignals:     make(map[string]PerCoinSignal),
 			freeClient:         freeVergex,
 			trending:           trendingClient,
+			opportunity:        opportunityClient,
 		}
 	}
 
@@ -271,6 +287,7 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 		perCoinSignals:     make(map[string]PerCoinSignal),
 		freeClient:         freeVergex,
 		trending:           trendingClient,
+		opportunity:        opportunityClient,
 	}
 }
 
@@ -500,6 +517,20 @@ func (e *StrategyEngine) GetCandidateCoins() ([]CandidateCoin, error) {
 
 	case "hyper_rank":
 		coins, err := e.getHyperRankCoins(coinSource.HyperRankCategory, coinSource.HyperRankDirection, coinSource.HyperRankLimit)
+		if err != nil {
+			return nil, err
+		}
+		return e.filterExcludedCoins(coins), nil
+
+	case "binance_technical":
+		coins, err := e.getBinanceOpportunityCoins("technical", coinSource.BinanceTechnicalInterval, coinSource.BinanceTechnicalDirection, coinSource.BinanceTechnicalLimit)
+		if err != nil {
+			return nil, err
+		}
+		return e.filterExcludedCoins(coins), nil
+
+	case "binance_sentiment":
+		coins, err := e.getBinanceOpportunityCoins("sentiment", "", coinSource.BinanceSentimentDirection, coinSource.BinanceSentimentLimit)
 		if err != nil {
 			return nil, err
 		}
@@ -871,6 +902,53 @@ func (e *StrategyEngine) getHyperRankCoins(category, direction string, limit int
 	}
 	logger.Infof("✅ Loaded %d Hyperliquid rank coins (%s/%s, capped at %d)", len(candidates), category, direction, limit)
 	return candidates, nil
+}
+
+func (e *StrategyEngine) getBinanceOpportunityCoins(scene, interval, direction string, limit int) ([]CandidateCoin, error) {
+	if limit <= 0 {
+		limit = store.MaxCandidateCoins
+	}
+	if limit > store.MaxCandidateCoins {
+		limit = store.MaxCandidateCoins
+	}
+	direction = strings.ToLower(strings.TrimSpace(direction))
+	if direction == "" {
+		direction = "top"
+	}
+	assets, err := e.opportunity.GetOpportunityAssets(context.Background(), interval, scene)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch Binance %s opportunity: %w", scene, err)
+	}
+	sort.Slice(assets, func(i, j int) bool {
+		if direction == "bottom" {
+			return assets[i].Score < assets[j].Score
+		}
+		return assets[i].Score > assets[j].Score
+	})
+	if len(assets) > limit {
+		assets = assets[:limit]
+	}
+	candidates := make([]CandidateCoin, 0, len(assets))
+	for _, a := range assets {
+		perp := mapSpotToPerp(a.Symbol)
+		if perp == "" {
+			continue
+		}
+		candidates = append(candidates, CandidateCoin{
+			Symbol:  perp,
+			Sources: []string{"binance_" + scene},
+		})
+	}
+	logger.Infof("✅ Loaded %d Binance %s opportunity coins (dir=%s, capped at %d)", len(candidates), scene, direction, limit)
+	return candidates, nil
+}
+
+func mapSpotToPerp(spot string) string {
+	s := strings.ToUpper(strings.TrimSpace(spot))
+	if s == "" {
+		return ""
+	}
+	return market.Normalize(s)
 }
 
 func (e *StrategyEngine) getVergexSignalCoins(limit int, marketType, chain, liqBand, category string, selectedSymbols []string, direction string) ([]CandidateCoin, error) {
