@@ -1085,6 +1085,11 @@ type IndicatorConfig struct {
 	EnableNetflowData bool     `json:"enable_netflow_data"`      // net flow
 	EnablePriceData   bool     `json:"enable_price_data"`        // price change
 	DataDurations     []string `json:"data_durations,omitempty"` // 15m..24h
+
+	// Binance Opportunity per-coin detail sources (free).
+	EnableBinanceTechnicalData  bool     `json:"enable_binance_technical_data"`           // per-coin technical detail
+	EnableBinanceSentimentData  bool     `json:"enable_binance_sentiment_data"`           // per-coin sentiment detail
+	BinanceTechnicalIntervals   []string `json:"binance_technical_intervals,omitempty"`   // "1h","24h"
 }
 
 // KlineConfig K-line configuration
