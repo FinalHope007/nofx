@@ -125,6 +125,57 @@ func TestGetAssetDetailsParsesUiModulesCategories(t *testing.T) {
 	}
 }
 
+func TestGetAssetDetails24hFallsBackToStaticCategories(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// 24h detail: metrics present but uiModules.technicalIndicatorSummariesModule is empty.
+		w.Write([]byte(`{"code":"000000","data":{
+			"metrics":{
+				"technical_ind_rsi_signal_1d":{"value":"10.00","valueLabel":"Overbought","label":"RSI (Relative Strength Index)"},
+				"technical_ind_rsi_summary_1d":{"value":"RSI at 92 signals overbought.","valueLabel":"RSI at 92 signals overbought.","label":"RSI (Relative Strength Index)"},
+				"technical_ind_macd_signal_1d":{"value":"9.00","valueLabel":"Golden Cross","label":"MACD (Moving Average Convergence Divergence)"},
+				"technical_ind_macd_summary_1d":{"value":"MACD golden cross.","valueLabel":"MACD golden cross.","label":"MACD (Moving Average Convergence Divergence)"}
+			},
+			"uiModules":{"technicalIndicatorSummariesModule":[]}
+		},"success":true}`))
+	}))
+	defer srv.Close()
+
+	c := NewOpportunityClient()
+	c.baseURL = srv.URL
+	got, err := c.GetAssetDetails(context.Background(), "BTC", "technical", "24h")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Even though the 24h endpoint returns no uiModules, the static category
+	// mapping should group the present subindicators by category.
+	if len(got.Categories) != 2 {
+		t.Fatalf("expected 2 categories from static fallback, got %d", len(got.Categories))
+	}
+	// Category order follows staticTechnicalCategories: Trend first, then Momentum.
+	if got.Categories[0].Category != "Trend Indicators" {
+		t.Fatalf("expected Trend Indicators first, got %q", got.Categories[0].Category)
+	}
+	if got.Categories[1].Category != "Momentum Indicators" {
+		t.Fatalf("expected Momentum Indicators second, got %q", got.Categories[1].Category)
+	}
+	// Trend category should contain MACD.
+	macd := got.Categories[0].SubIndicators[0]
+	if macd.Title != "MACD (Moving Average Convergence Divergence)" || macd.Score != "9.00" || macd.Signal != "Golden Cross" {
+		t.Fatalf("unexpected MACD subindicator: %+v", macd)
+	}
+	// Momentum category should contain RSI.
+	rsi := got.Categories[1].SubIndicators[0]
+	if rsi.Title != "RSI (Relative Strength Index)" || rsi.Score != "10.00" || rsi.Signal != "Overbought" {
+		t.Fatalf("unexpected RSI subindicator: %+v", rsi)
+	}
+	if rsi.Summary != "RSI at 92 signals overbought." {
+		t.Fatalf("expected RSI summary from correlated metric, got %q", rsi.Summary)
+	}
+}
+
 func TestGetAssetDetailsRetryOn429(t *testing.T) {
 	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
 	attempts := 0

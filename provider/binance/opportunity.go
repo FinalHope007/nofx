@@ -175,9 +175,25 @@ func (c *OpportunityClient) GetAssetDetails(ctx context.Context, symbol, scene, 
 	return detail, nil
 }
 
+// staticTechnicalCategories maps category name -> subindicator labels, matching
+// the 1h endpoint's uiModules grouping. The Binance 24h technical detail returns
+// an empty technicalIndicatorSummariesModule, so we fall back to this static
+// grouping to keep 24h subindicators categorized exactly like the 1h detail.
+var staticTechnicalCategories = []struct {
+	category string
+	labels   []string
+}{
+	{"Trend Indicators", []string{"MA (Moving Average)", "MACD (Moving Average Convergence Divergence)", "ADX (Average Directional Index)"}},
+	{"Volatility Indicators", []string{"Bollinger Bands", "ATR (Average True Range)"}},
+	{"Momentum Indicators", []string{"RSI (Relative Strength Index)", "Stochastic Oscillator"}},
+	{"Volume & Price Indicators", []string{"Volume", "MFI (Money Flow Index)"}},
+}
+
 // buildCategories correlates uiModules category items with their matching
 // technical_ind_*_signal_* / *_summary_* metrics (matched by the item title
-// equalling the metric's label) and attaches the numeric score.
+// equalling the metric's label) and attaches the numeric score. When the
+// endpoint provides no uiModules (e.g. the 24h technical detail), it falls back
+// to staticTechnicalCategories so subindicators are still grouped by category.
 func buildCategories(modules []struct {
 	Title string `json:"title"`
 	Items []struct {
@@ -190,10 +206,7 @@ func buildCategories(modules []struct {
 	ValueLabel string `json:"valueLabel"`
 	Label      string `json:"label"`
 }) []BinanceCategory {
-	if len(modules) == 0 {
-		return nil
-	}
-	// Index metrics by label so uiModules items can be correlated. The
+	// Index metrics by label so category items can be correlated. The
 	// *_signal_* metric's value is the numeric score; the *_summary_* metric's
 	// valueLabel is the full narrative.
 	signalByLabel := make(map[string]struct{ value, label string })
@@ -210,29 +223,61 @@ func buildCategories(modules []struct {
 		}
 	}
 
-	cats := make([]BinanceCategory, 0, len(modules))
-	for _, mod := range modules {
-		cat := BinanceCategory{Category: mod.Title}
-		for _, item := range mod.Items {
-			sig := signalByLabel[item.Title]
-			sub := BinanceSubIndicator{
-				Title:   item.Title,
-				Summary: item.Summary,
-				Signal:  item.Signal,
+	// Prefer the endpoint-provided category grouping (1h detail).
+	if len(modules) > 0 {
+		cats := make([]BinanceCategory, 0, len(modules))
+		for _, mod := range modules {
+			cat := BinanceCategory{Category: mod.Title}
+			for _, item := range mod.Items {
+				cat.SubIndicators = append(cat.SubIndicators, buildSubIndicator(item.Title, item.Summary, item.Signal, signalByLabel, summaryByLabel))
 			}
-			if sig.value != "" {
-				sub.Score = sig.value
-			}
-			// Prefer the correlated summary narrative; fall back to the
-			// uiModules-provided summary if the metric is unavailable.
-			if s := summaryByLabel[item.Title]; s != "" {
-				sub.Summary = s
-			}
-			cat.SubIndicators = append(cat.SubIndicators, sub)
+			cats = append(cats, cat)
 		}
-		cats = append(cats, cat)
+		return cats
+	}
+
+	// Fallback: derive the grouping from staticTechnicalCategories for intervals
+	// (e.g. 24h) whose uiModules is empty. Only include categories that have at
+	// least one present subindicator metric.
+	cats := make([]BinanceCategory, 0, len(staticTechnicalCategories))
+	for _, sc := range staticTechnicalCategories {
+		cat := BinanceCategory{Category: sc.category}
+		for _, label := range sc.labels {
+			if sig, ok := signalByLabel[label]; ok {
+				cat.SubIndicators = append(cat.SubIndicators, buildSubIndicator(label, summaryByLabel[label], sig.label, signalByLabel, summaryByLabel))
+			}
+		}
+		if len(cat.SubIndicators) > 0 {
+			cats = append(cats, cat)
+		}
 	}
 	return cats
+}
+
+// buildSubIndicator assembles a BinanceSubIndicator from a category item, its
+// correlated signal metric (score + label) and summary metric.
+func buildSubIndicator(title, itemSummary, itemSignal string, signalByLabel map[string]struct{ value, label string }, summaryByLabel map[string]string) BinanceSubIndicator {
+	sig := signalByLabel[title]
+	sub := BinanceSubIndicator{
+		Title:  title,
+		Signal: itemSignal,
+	}
+	if sig.value != "" {
+		sub.Score = sig.value
+	}
+	// Prefer the correlated summary narrative; fall back to the uiModules- or
+	// static-provided summary if the metric is unavailable.
+	sub.Summary = itemSummary
+	if s := summaryByLabel[title]; s != "" {
+		sub.Summary = s
+	}
+	if sub.Signal == "" {
+		sub.Signal = sig.label
+	}
+	if sub.Summary == "" {
+		sub.Summary = sub.Signal
+	}
+	return sub
 }
 
 func (c *OpportunityClient) GetOpportunityAssets(ctx context.Context, interval, scene string) ([]OpportunityAsset, error) {
