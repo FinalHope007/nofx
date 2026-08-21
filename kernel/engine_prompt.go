@@ -1094,7 +1094,7 @@ func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float6
 			// Category breakdown (Trend -> Volatility -> Momentum -> Volume & Price),
 			// plus any subindicators with a score but no category grouping.
 			for _, cat := range orderCategories(detail) {
-				sb.WriteString(formatCategory(cat))
+				sb.WriteString(formatCategory(cat, detail, suffix))
 			}
 			appendUncategorizedIndicators(&sb, detail, suffix)
 			sb.WriteString("\n")
@@ -1179,6 +1179,15 @@ func metricScoreLine(detail *binance.BinanceAssetDetail, key string) string {
 // Entries not listed are appended after the known ones, in their API order.
 var categoryOrder = []string{"Trend Indicators", "Volatility Indicators", "Momentum Indicators", "Volume & Price Indicators"}
 
+// categoryScoreKey maps a category name to the suffix of its technical_score_*_<suffix>
+// metric (e.g. "Volatility Indicators" -> "volatility" for technical_score_volatility_1h).
+var categoryScoreKey = map[string]string{
+	"Trend Indicators":        "trend",
+	"Volatility Indicators":   "volatility",
+	"Momentum Indicators":     "momentum",
+	"Volume & Price Indicators": "volprice",
+}
+
 // orderCategories returns the detail's categories sorted by categoryOrder.
 func orderCategories(detail *binance.BinanceAssetDetail) []binance.BinanceCategory {
 	if detail == nil || len(detail.Categories) == 0 {
@@ -1203,14 +1212,46 @@ func orderCategories(detail *binance.BinanceAssetDetail) []binance.BinanceCatego
 	return out
 }
 
-// formatCategory renders one category's subindicator lines:
-// "  <Title>: <Signal> (score: <value>/10.00) - <Summary>"
-func formatCategory(cat binance.BinanceCategory) string {
+// categoryScoreString formats "<label> <value>/10.00" for a category's
+// technical_score_*_<suffix> metric, e.g. "Volatility Expansion 7.40/10.00".
+// Returns "" when the metric is unavailable.
+func categoryScoreString(detail *binance.BinanceAssetDetail, key string) string {
+	if detail == nil {
+		return ""
+	}
+	m, ok := detail.Metrics[key]
+	if !ok {
+		return ""
+	}
+	label := strings.TrimSpace(m.ValueLabel)
+	if label == "" {
+		label = strings.TrimSpace(m.Value)
+	}
+	val := strings.TrimSpace(m.Value)
+	if label == "" && val == "" {
+		return ""
+	}
+	if val != "" {
+		return fmt.Sprintf("%s %s/10.00", label, val)
+	}
+	return label
+}
+
+// formatCategory renders one category's header (with its score) and subindicator
+// lines: "--- <Category> (Score: <label> <value>/10.00) ---" followed by
+// "  <Title>: <Signal> (score: <value>/10.00) - <Summary>".
+func formatCategory(cat binance.BinanceCategory, detail *binance.BinanceAssetDetail, suffix string) string {
 	if cat.Category == "" || len(cat.SubIndicators) == 0 {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString("--- " + cat.Category + " ---\n")
+	header := cat.Category
+	if key, ok := categoryScoreKey[cat.Category]; ok {
+		if score := categoryScoreString(detail, "technical_score_"+key+"_"+suffix); score != "" {
+			header = fmt.Sprintf("%s (Score: %s)", header, score)
+		}
+	}
+	sb.WriteString("--- " + header + " ---\n")
 	for _, sub := range cat.SubIndicators {
 		sb.WriteString(formatSubIndicator(sub))
 	}

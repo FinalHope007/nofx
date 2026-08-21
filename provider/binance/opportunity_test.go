@@ -130,12 +130,15 @@ func TestGetAssetDetails24hFallsBackToStaticCategories(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// 24h detail: metrics present but uiModules.technicalIndicatorSummariesModule is empty.
+		// Note: 24h *_summary_* metrics carry a placeholder label (e.g.
+		// "technical_ind_rsi_summary_1d_name"), NOT the human title. The
+		// summary must still be correlated to its subindicator by base name.
 		w.Write([]byte(`{"code":"000000","data":{
 			"metrics":{
 				"technical_ind_rsi_signal_1d":{"value":"10.00","valueLabel":"Overbought","label":"RSI (Relative Strength Index)"},
-				"technical_ind_rsi_summary_1d":{"value":"RSI at 92 signals overbought.","valueLabel":"RSI at 92 signals overbought.","label":"RSI (Relative Strength Index)"},
+				"technical_ind_rsi_summary_1d":{"value":"RSI at 92 signals overbought.","valueLabel":"RSI at 92 signals overbought.","label":"technical_ind_rsi_summary_1d_name"},
 				"technical_ind_macd_signal_1d":{"value":"9.00","valueLabel":"Golden Cross","label":"MACD (Moving Average Convergence Divergence)"},
-				"technical_ind_macd_summary_1d":{"value":"MACD golden cross.","valueLabel":"MACD golden cross.","label":"MACD (Moving Average Convergence Divergence)"}
+				"technical_ind_macd_summary_1d":{"value":"MACD golden cross.","valueLabel":"MACD golden cross.","label":"technical_ind_macd_summary_1d_name"}
 			},
 			"uiModules":{"technicalIndicatorSummariesModule":[]}
 		},"success":true}`))
@@ -165,6 +168,9 @@ func TestGetAssetDetails24hFallsBackToStaticCategories(t *testing.T) {
 	macd := got.Categories[0].SubIndicators[0]
 	if macd.Title != "MACD (Moving Average Convergence Divergence)" || macd.Score != "9.00" || macd.Signal != "Golden Cross" {
 		t.Fatalf("unexpected MACD subindicator: %+v", macd)
+	}
+	if macd.Summary != "MACD golden cross." {
+		t.Fatalf("expected MACD summary correlated by base name, got %q", macd.Summary)
 	}
 	// Momentum category should contain RSI.
 	rsi := got.Categories[1].SubIndicators[0]

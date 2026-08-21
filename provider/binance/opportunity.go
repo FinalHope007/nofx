@@ -190,10 +190,12 @@ var staticTechnicalCategories = []struct {
 }
 
 // buildCategories correlates uiModules category items with their matching
-// technical_ind_*_signal_* / *_summary_* metrics (matched by the item title
-// equalling the metric's label) and attaches the numeric score. When the
-// endpoint provides no uiModules (e.g. the 24h technical detail), it falls back
-// to staticTechnicalCategories so subindicators are still grouped by category.
+// technical_ind_*_signal_* / *_summary_* metrics and attaches the numeric score.
+// When the endpoint provides no uiModules (e.g. the 24h technical detail), it
+// falls back to staticTechnicalCategories so subindicators are still grouped.
+// Correlation is done by the metric key's base indicator name (e.g. "adx" from
+// technical_ind_adx_signal_1d), which is robust to the summary metric carrying a
+// placeholder label (e.g. "technical_ind_adx_summary_1d_name") on 24h.
 func buildCategories(modules []struct {
 	Title string `json:"title"`
 	Items []struct {
@@ -206,20 +208,22 @@ func buildCategories(modules []struct {
 	ValueLabel string `json:"valueLabel"`
 	Label      string `json:"label"`
 }) []BinanceCategory {
-	// Index metrics by label so category items can be correlated. The
-	// *_signal_* metric's value is the numeric score; the *_summary_* metric's
-	// valueLabel is the full narrative.
-	signalByLabel := make(map[string]struct{ value, label string })
-	summaryByLabel := make(map[string]string)
+	// Index metrics by base indicator name. The *_signal_* metric holds the
+	// numeric score + human label; the *_summary_* metric holds the narrative.
+	signalByBase := make(map[string]struct{ value, label string })
+	summaryByBase := make(map[string]string)
+	labelByBase := make(map[string]string)
 	for key, m := range metrics {
-		if m.Label == "" {
+		base, ok := technicalIndBase(key)
+		if !ok {
 			continue
 		}
 		if strings.Contains(key, "_signal_") {
-			signalByLabel[m.Label] = struct{ value, label string }{value: strings.TrimSpace(m.Value), label: strings.TrimSpace(m.ValueLabel)}
+			signalByBase[base] = struct{ value, label string }{value: strings.TrimSpace(m.Value), label: strings.TrimSpace(m.ValueLabel)}
+			labelByBase[base] = strings.TrimSpace(m.Label)
 		}
 		if strings.Contains(key, "_summary_") {
-			summaryByLabel[m.Label] = strings.TrimSpace(m.ValueLabel)
+			summaryByBase[base] = strings.TrimSpace(m.ValueLabel)
 		}
 	}
 
@@ -229,7 +233,7 @@ func buildCategories(modules []struct {
 		for _, mod := range modules {
 			cat := BinanceCategory{Category: mod.Title}
 			for _, item := range mod.Items {
-				cat.SubIndicators = append(cat.SubIndicators, buildSubIndicator(item.Title, item.Summary, item.Signal, signalByLabel, summaryByLabel))
+				cat.SubIndicators = append(cat.SubIndicators, buildSubIndicator(item.Title, item.Summary, item.Signal, labelByBase, signalByBase, summaryByBase))
 			}
 			cats = append(cats, cat)
 		}
@@ -243,8 +247,12 @@ func buildCategories(modules []struct {
 	for _, sc := range staticTechnicalCategories {
 		cat := BinanceCategory{Category: sc.category}
 		for _, label := range sc.labels {
-			if sig, ok := signalByLabel[label]; ok {
-				cat.SubIndicators = append(cat.SubIndicators, buildSubIndicator(label, summaryByLabel[label], sig.label, signalByLabel, summaryByLabel))
+			base := baseForLabel(label, labelByBase)
+			if base == "" {
+				continue
+			}
+			if _, ok := signalByBase[base]; ok {
+				cat.SubIndicators = append(cat.SubIndicators, buildSubIndicator(label, summaryByBase[base], signalByBase[base].label, labelByBase, signalByBase, summaryByBase))
 			}
 		}
 		if len(cat.SubIndicators) > 0 {
@@ -254,10 +262,43 @@ func buildCategories(modules []struct {
 	return cats
 }
 
+// technicalIndBase extracts the base indicator name from a metric key, e.g.
+// "adx" from "technical_ind_adx_signal_1d" or "adx" from
+// "technical_ind_adx_summary_1d". Returns ok=false for non-technical metrics.
+func technicalIndBase(key string) (string, bool) {
+	const prefix = "technical_ind_"
+	if !strings.HasPrefix(key, prefix) {
+		return "", false
+	}
+	rest := key[len(prefix):]
+	// Strip the _signal_<suffix> or _summary_<suffix> tail.
+	for _, marker := range []string{"_signal_", "_summary_"} {
+		if idx := strings.Index(rest, marker); idx >= 0 {
+			return rest[:idx], true
+		}
+	}
+	return "", false
+}
+
+// baseForLabel reverse-maps a human subindicator title to its base indicator
+// name using the labelByBase index (built from the signal metrics' labels).
+func baseForLabel(label string, labelByBase map[string]string) string {
+	for base, l := range labelByBase {
+		if l == label {
+			return base
+		}
+	}
+	return ""
+}
+
 // buildSubIndicator assembles a BinanceSubIndicator from a category item, its
 // correlated signal metric (score + label) and summary metric.
-func buildSubIndicator(title, itemSummary, itemSignal string, signalByLabel map[string]struct{ value, label string }, summaryByLabel map[string]string) BinanceSubIndicator {
-	sig := signalByLabel[title]
+func buildSubIndicator(title, itemSummary, itemSignal string, labelByBase map[string]string, signalByBase map[string]struct{ value, label string }, summaryByBase map[string]string) BinanceSubIndicator {
+	base := baseForLabel(title, labelByBase)
+	var sig struct{ value, label string }
+	if base != "" {
+		sig = signalByBase[base]
+	}
 	sub := BinanceSubIndicator{
 		Title:  title,
 		Signal: itemSignal,
@@ -265,11 +306,13 @@ func buildSubIndicator(title, itemSummary, itemSignal string, signalByLabel map[
 	if sig.value != "" {
 		sub.Score = sig.value
 	}
-	// Prefer the correlated summary narrative; fall back to the uiModules- or
-	// static-provided summary if the metric is unavailable.
+	// Prefer the correlated summary narrative (by base); fall back to the
+	// uiModules-/static-provided summary, then to the signal label.
 	sub.Summary = itemSummary
-	if s := summaryByLabel[title]; s != "" {
-		sub.Summary = s
+	if base != "" {
+		if s := summaryByBase[base]; s != "" {
+			sub.Summary = s
+		}
 	}
 	if sub.Signal == "" {
 		sub.Signal = sig.label

@@ -364,7 +364,7 @@ func TestFormatPerCoinSignalsBinanceRichDetail(t *testing.T) {
 		"Binance Technical",
 		"Bullish overall",
 		"Overall Score: Strong Positive (8.73/10.00)",
-		"--- Trend Indicators ---",
+		"--- Trend Indicators (Score: Bullish 9.52/10.00) ---",
 		"MACD (Moving Average Convergence Divergence): Weak Bullish (score: 7.00/10.00) - MACD remains weakly bullish.",	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
@@ -404,6 +404,51 @@ func TestFormatPerCoinSignalsBinance24h(t *testing.T) {
 	}
 	if !strings.Contains(out, "Overall Score: Positive (7.50/10.00)") {
 		t.Fatalf("missing 24h overall score:\n%s", out)
+	}
+}
+
+func TestFormatPerCoinSignalsBinance24hCategoryScoreAndSummary(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.Indicators.EnableBinanceTechnicalData = true
+	cfg.Indicators.BinanceTechnicalIntervals = []string{"24h"}
+	e := NewStrategyEngine(cfg)
+	e.SetPerCoinSignals(map[string]PerCoinSignal{
+		"TIAUSDT": {
+			BinanceTechnical: map[string]*binance.BinanceAssetDetail{
+				"24h": {
+					Metrics: map[string]binance.BinanceMetric{
+						"technical_summary_1d":             {ValueLabel: "Bullish near term."},
+						"technical_score_1d":               {Value: "7.23", ValueLabel: "Positive"},
+						"technical_score_volatility_1d":    {Value: "7.40", ValueLabel: "Volatility Expansion"},
+						"technical_ind_rsi_signal_1d":      {Value: "7.00", ValueLabel: "Neutral to Bullish", Label: "RSI (Relative Strength Index)"},
+						"technical_ind_rsi_summary_1d":     {Value: "RSI at 58 shows momentum.", ValueLabel: "RSI at 58 shows momentum.", Label: "technical_ind_rsi_summary_1d_name"},
+						"technical_ind_atr_signal_1d":      {Value: "10.00", ValueLabel: "Extreme Volatility", Label: "ATR (Average True Range)"},
+						"technical_ind_atr_summary_1d":     {Value: "ATR signals extreme volatility.", ValueLabel: "ATR signals extreme volatility.", Label: "technical_ind_atr_summary_1d_name"},
+					},
+					Categories: []binance.BinanceCategory{
+						{Category: "Volatility Indicators", SubIndicators: []binance.BinanceSubIndicator{
+							{Title: "ATR (Average True Range)", Signal: "Extreme Volatility", Score: "10.00", Summary: "ATR signals extreme volatility."},
+						}},
+						{Category: "Momentum Indicators", SubIndicators: []binance.BinanceSubIndicator{
+							{Title: "RSI (Relative Strength Index)", Signal: "Neutral to Bullish", Score: "7.00", Summary: "RSI at 58 shows momentum."},
+						}},
+					},
+				},
+			},
+		},
+	})
+	out := e.formatPerCoinSignals("TIAUSDT", 3.0)
+
+	// Issue 2: the category header must include the category score.
+	if !strings.Contains(out, "--- Volatility Indicators (Score: Volatility Expansion 7.40/10.00) ---") {
+		t.Fatalf("missing category score in header:\n%s", out)
+	}
+	// Issue 1: 24h subindicator summaries must be included (not just the signal label).
+	if !strings.Contains(out, "ATR (Average True Range): Extreme Volatility (score: 10.00/10.00) - ATR signals extreme volatility.") {
+		t.Fatalf("missing 24h subindicator summary:\n%s", out)
+	}
+	if !strings.Contains(out, "RSI (Relative Strength Index): Neutral to Bullish (score: 7.00/10.00) - RSI at 58 shows momentum.") {
+		t.Fatalf("missing 24h RSI summary:\n%s", out)
 	}
 }
 
