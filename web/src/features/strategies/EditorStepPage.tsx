@@ -217,6 +217,15 @@ export function EditorStepPage() {
             ? ind.data_durations
             : ['1h', '24h']
         )
+
+        // Restore decision-context settings from the saved config. These are
+        // NOT restored previously, so opening the editor reset them to their
+        // useState defaults (enabled=true, count=8, mode=structured), and a
+        // subsequent save would overwrite the user's recent_count.
+        const dc = ai?.decision_context
+        setDecisionEnabled(dc?.enabled ?? true)
+        setDecisionCount(dc?.recent_count ?? 8)
+        setContextMode(dc?.mode ?? 'structured')
       } catch (err) {
         notify.error(
           err instanceof Error ? err.message : 'Failed to load strategy'
