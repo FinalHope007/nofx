@@ -47,8 +47,8 @@ func TestGetAssetDetails(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"code":"000000","data":{"metrics":{
-			"technical_score_1h":{"value":"7.85","valueLabel":"Positive"},
-			"technical_summary_1h":{"value":"Bullish overall for BTC.","valueLabel":"Bullish overall for BTC."}
+			"technical_score_1h":{"value":"7.85","valueLabel":"Positive","label":"Technical Score"},
+			"technical_summary_1h":{"value":"Bullish overall for BTC.","valueLabel":"Bullish overall for BTC.","label":"Summary"}
 		}},"success":true}`))
 	}))
 	defer srv.Close()
@@ -59,11 +59,69 @@ func TestGetAssetDetails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got["technical_score_1h"] != "Positive" {
-		t.Fatalf("expected score label, got %q", got["technical_score_1h"])
+	labels := got.LabelMap()
+	if labels["technical_score_1h"] != "Positive" {
+		t.Fatalf("expected score label, got %q", labels["technical_score_1h"])
 	}
-	if !strings.Contains(got["technical_summary_1h"], "Bullish overall") {
-		t.Fatalf("expected summary, got %q", got["technical_summary_1h"])
+	if !strings.Contains(labels["technical_summary_1h"], "Bullish overall") {
+		t.Fatalf("expected summary, got %q", labels["technical_summary_1h"])
+	}
+	// Verify the numeric value and label are retained in the structured metric.
+	if got.Metrics["technical_score_1h"].Value != "7.85" {
+		t.Fatalf("expected numeric value 7.85, got %q", got.Metrics["technical_score_1h"].Value)
+	}
+}
+
+func TestGetAssetDetailsParsesUiModulesCategories(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"code":"000000","data":{
+			"metrics":{
+				"technical_ind_rsi_signal_1h":{"value":"10.00","valueLabel":"Overbought","label":"RSI (Relative Strength Index)"},
+				"technical_ind_rsi_summary_1h":{"value":"RSI at 92 signals overbought.","valueLabel":"RSI at 92 signals overbought.","label":"RSI (Relative Strength Index)"},
+				"technical_ind_volume_signal_1h":{"value":"7.00","valueLabel":"1.2-1.5x average volume","label":"Volume"},
+				"technical_ind_volume_summary_1h":{"value":"Volume is healthy.","valueLabel":"Volume is healthy.","label":"Volume"}
+			},
+			"uiModules":{"technicalIndicatorSummariesModule":[
+				{"title":"Momentum Indicators","items":[
+					{"title":"RSI (Relative Strength Index)","summary":"uiModules RSI summary","signal":"Overbought"}
+				]},
+				{"title":"Volume & Price Indicators","items":[
+					{"title":"Volume","summary":"uiModules Volume summary","signal":"1.2-1.5x average volume"}
+				]}
+			]}
+		},"success":true}`))
+	}))
+	defer srv.Close()
+
+	c := NewOpportunityClient()
+	c.baseURL = srv.URL
+	got, err := c.GetAssetDetails(context.Background(), "BTC", "technical", "1h")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Categories) != 2 {
+		t.Fatalf("expected 2 categories, got %d", len(got.Categories))
+	}
+	// First category: Momentum Indicators -> RSI
+	cat := got.Categories[0]
+	if cat.Category != "Momentum Indicators" {
+		t.Fatalf("expected Momentum Indicators first, got %q", cat.Category)
+	}
+	if len(cat.SubIndicators) != 1 {
+		t.Fatalf("expected 1 subindicator in momentum, got %d", len(cat.SubIndicators))
+	}
+	rsi := cat.SubIndicators[0]
+	if rsi.Score != "10.00" {
+		t.Fatalf("expected RSI score 10.00, got %q", rsi.Score)
+	}
+	// Summary should come from the correlated *_summary_* metric (not uiModules)
+	if rsi.Summary != "RSI at 92 signals overbought." {
+		t.Fatalf("expected correlated RSI summary, got %q", rsi.Summary)
+	}
+	if rsi.Signal != "Overbought" {
+		t.Fatalf("expected RSI signal Overbought, got %q", rsi.Signal)
 	}
 }
 
@@ -79,7 +137,7 @@ func TestGetAssetDetailsRetryOn429(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"code":"000000","data":{"metrics":{
-			"technical_score_1h":{"value":"7.85","valueLabel":"Positive"}
+			"technical_score_1h":{"value":"7.85","valueLabel":"Positive","label":"Technical Score"}
 		}},"success":true}`))
 	}))
 	defer srv.Close()
@@ -90,8 +148,8 @@ func TestGetAssetDetailsRetryOn429(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got["technical_score_1h"] != "Positive" {
-		t.Fatalf("expected score label after retry, got %q", got["technical_score_1h"])
+	if got.LabelMap()["technical_score_1h"] != "Positive" {
+		t.Fatalf("expected score label after retry, got %q", got.LabelMap()["technical_score_1h"])
 	}
 	if attempts != 2 {
 		t.Fatalf("expected 2 attempts (1 fail + 1 retry), got %d", attempts)

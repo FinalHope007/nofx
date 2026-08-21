@@ -3,13 +3,15 @@ package kernel
 import (
 	"sync"
 	"time"
+
+	"nofx/provider/binance"
 )
 
 // binanceDetailCacheTTL bounds how long a cached per-coin Binance detail is kept.
 const binanceDetailCacheTTL = 10 * time.Minute
 
 type binanceDetailEntry struct {
-	value   map[string]string
+	value   *binance.BinanceAssetDetail
 	expires time.Time
 }
 
@@ -24,7 +26,7 @@ func newBinanceDetailCache() *binanceDetailCache {
 	return &binanceDetailCache{data: make(map[string]binanceDetailEntry)}
 }
 
-func (c *binanceDetailCache) get(key string) (map[string]string, bool) {
+func (c *binanceDetailCache) get(key string) (*binance.BinanceAssetDetail, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.data[key]
@@ -34,7 +36,7 @@ func (c *binanceDetailCache) get(key string) (map[string]string, bool) {
 	return e.value, true
 }
 
-func (c *binanceDetailCache) set(key string, v map[string]string) {
+func (c *binanceDetailCache) set(key string, v *binance.BinanceAssetDetail) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.data[key] = binanceDetailEntry{value: v, expires: time.Now().Add(binanceDetailCacheTTL)}

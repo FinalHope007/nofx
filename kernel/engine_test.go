@@ -18,8 +18,10 @@ func (f *fakeOpportunityClient) GetOpportunityAssets(_ context.Context, _, _ str
 	}, nil
 }
 
-func (f *fakeOpportunityClient) GetAssetDetails(_ context.Context, _, _, _ string) (map[string]string, error) {
-	return map[string]string{"fake_label": "fake_value"}, nil
+func (f *fakeOpportunityClient) GetAssetDetails(_ context.Context, _, _, _ string) (*binance.BinanceAssetDetail, error) {
+	return &binance.BinanceAssetDetail{
+		Metrics: map[string]binance.BinanceMetric{"fake_label": {ValueLabel: "fake_value"}},
+	}, nil
 }
 
 func TestGetCandidateCoinsBinanceTechnical(t *testing.T) {
@@ -79,9 +81,11 @@ func TestAttachPerCoinSignalsBinanceSentiment(t *testing.T) {
 	engine.opportunity = &fakeOpportunityClient{}
 
 	// Pre-populate cache with fake sentiment detail for BTCUSDT
-	engine.cacheBinanceDetail("sentiment|BTCUSDT", map[string]string{
-		"sentiment_score":  "Positive",
-		"sentiment_summary": "In the past 24h BTC was bullish.",
+	engine.cacheBinanceDetail("sentiment|BTCUSDT", &binance.BinanceAssetDetail{
+		Metrics: map[string]binance.BinanceMetric{
+			"sentiment_score":  {Value: "10.00", ValueLabel: "Positive"},
+			"sentiment_summary": {ValueLabel: "In the past 24h BTC was bullish."},
+		},
 	})
 
 	ctx := &Context{
@@ -117,9 +121,11 @@ func TestAttachPerCoinSignalsBinanceTechnical(t *testing.T) {
 	engine.opportunity = &fakeOpportunityClient{}
 
 	// Pre-populate cache with fake technical detail for BTCUSDT
-	engine.cacheBinanceDetail("technical|BTCUSDT|1h", map[string]string{
-		"technical_score_1h":  "Positive",
-		"technical_summary_1h": "Bullish overall for BTC.",
+	engine.cacheBinanceDetail("technical|BTCUSDT|1h", &binance.BinanceAssetDetail{
+		Metrics: map[string]binance.BinanceMetric{
+			"technical_score_1h":  {Value: "8.73", ValueLabel: "Positive"},
+			"technical_summary_1h": {ValueLabel: "Bullish overall for BTC."},
+		},
 	})
 
 	ctx := &Context{
@@ -138,11 +144,15 @@ func TestAttachPerCoinSignalsBinanceTechnical(t *testing.T) {
 	if sig.BinanceTechnical == nil {
 		t.Fatal("expected BinanceTechnical to be non-nil")
 	}
-	if sig.BinanceTechnical["1h|technical_score_1h"] != "Positive" {
-		t.Fatalf("expected technical_score_1h=Positive, got %q", sig.BinanceTechnical["1h|technical_score_1h"])
+	detail, ok := sig.BinanceTechnical["1h"]
+	if !ok {
+		t.Fatal("expected BinanceTechnical[1h] to exist")
 	}
-	if sig.BinanceTechnical["1h|technical_summary_1h"] != "Bullish overall for BTC." {
-		t.Fatalf("expected technical_summary_1h to match, got %q", sig.BinanceTechnical["1h|technical_summary_1h"])
+	if detail.Metrics["technical_score_1h"].ValueLabel != "Positive" {
+		t.Fatalf("expected technical_score_1h=Positive, got %q", detail.Metrics["technical_score_1h"].ValueLabel)
+	}
+	if detail.Metrics["technical_summary_1h"].ValueLabel != "Bullish overall for BTC." {
+		t.Fatalf("expected technical_summary_1h to match, got %q", detail.Metrics["technical_summary_1h"].ValueLabel)
 	}
 }
 
@@ -161,8 +171,10 @@ func (f *fakeOpportunityClientN) GetOpportunityAssets(_ context.Context, _, _ st
 	return assets, nil
 }
 
-func (f *fakeOpportunityClientN) GetAssetDetails(_ context.Context, _, _, _ string) (map[string]string, error) {
-	return map[string]string{"fake_label": "fake_value"}, nil
+func (f *fakeOpportunityClientN) GetAssetDetails(_ context.Context, _, _, _ string) (*binance.BinanceAssetDetail, error) {
+	return &binance.BinanceAssetDetail{
+		Metrics: map[string]binance.BinanceMetric{"fake_label": {ValueLabel: "fake_value"}},
+	}, nil
 }
 
 func TestGetCandidateCoinsBinanceTechnicalNotTruncatedByLimit(t *testing.T) {

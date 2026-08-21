@@ -193,15 +193,15 @@ type PerCoinSignal struct {
 	OI                map[string]map[string]nofxos.OIPosition // duration -> list(top/low) -> data
 	Netflow           map[string]map[string]nofxos.NetFlowPosition
 	Price             map[string]map[string]nofxos.PriceRankingItem
-	BinanceTechnical  map[string]string // flattened technical detail labels (may be nil)
-	BinanceSentiment  map[string]string // flattened sentiment detail labels (may be nil)
+	BinanceTechnical  map[string]*binance.BinanceAssetDetail // interval -> parsed detail (may be nil)
+	BinanceSentiment  map[string]string                      // flattened sentiment detail labels (may be nil)
 }
 
 // binanceOpportunityGetter abstracts the Binance Opportunity client for
 // testability. *binance.OpportunityClient satisfies this interface.
 type binanceOpportunityGetter interface {
 	GetOpportunityAssets(ctx context.Context, interval, scene string) ([]binance.OpportunityAsset, error)
-	GetAssetDetails(ctx context.Context, symbol, scene, interval string) (map[string]string, error)
+	GetAssetDetails(ctx context.Context, symbol, scene, interval string) (*binance.BinanceAssetDetail, error)
 }
 
 // StrategyEngine strategy execution engine
@@ -377,11 +377,11 @@ func (e *StrategyEngine) PerCoinSignalFor(symbol string) (PerCoinSignal, bool) {
 	return s, ok
 }
 
-func (e *StrategyEngine) binanceDetail(key string) (map[string]string, bool) {
+func (e *StrategyEngine) binanceDetail(key string) (*binance.BinanceAssetDetail, bool) {
 	return e.binanceDetails.get(key)
 }
 
-func (e *StrategyEngine) cacheBinanceDetail(key string, v map[string]string) {
+func (e *StrategyEngine) cacheBinanceDetail(key string, v *binance.BinanceAssetDetail) {
 	e.binanceDetails.set(key, v)
 }
 

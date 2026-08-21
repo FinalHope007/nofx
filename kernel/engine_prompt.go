@@ -3,6 +3,7 @@ package kernel
 import (
 	"fmt"
 	"nofx/market"
+	"nofx/provider/binance"
 	"nofx/provider/nofxos"
 	"nofx/provider/vergex"
 	"nofx/store"
@@ -1080,9 +1081,23 @@ func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float6
 	if ind.EnableBinanceTechnicalData && len(sig.BinanceTechnical) > 0 {
 		sb.WriteString(fmt.Sprintf("=== %s Binance Technical ===\n", symbol))
 		for _, iv := range e.binanceIntervalOrder(ind.BinanceTechnicalIntervals) {
-			if v, ok := sig.BinanceTechnical[iv+"|technical_summary_"+iv]; ok {
-				sb.WriteString(fmt.Sprintf("[%s] %s\n", iv, v))
+			detail, ok := sig.BinanceTechnical[iv]
+			if !ok || detail == nil {
+				continue
 			}
+			suffix := binanceMetricSuffix(iv)
+			// Overall summary + overall score.
+			if v, ok := detail.Metrics["technical_summary_"+suffix]; ok {
+				score := metricScoreLine(detail, "technical_score_"+suffix)
+				sb.WriteString(fmt.Sprintf("[%s]%s\n%s\n", iv, score, v.ValueLabel))
+			}
+			// Category breakdown (Trend -> Volatility -> Momentum -> Volume & Price),
+			// plus any subindicators with a score but no category grouping.
+			for _, cat := range orderCategories(detail) {
+				sb.WriteString(formatCategory(cat))
+			}
+			appendUncategorizedIndicators(&sb, detail, suffix)
+			sb.WriteString("\n")
 		}
 		sb.WriteString("\n")
 	}
@@ -1124,6 +1139,147 @@ func (e *StrategyEngine) binanceIntervalOrder(intervals []string) []string {
 		}
 	}
 	return out
+}
+
+// binanceMetricSuffix returns the metric-key suffix the Binance Opportunity API
+// uses for a given user-facing interval: "1h" stays "1h", "24h" becomes "1d".
+// The API uses technical_summary_1d / technical_score_1d for the 24h interval.
+func binanceMetricSuffix(interval string) string {
+	if interval == "24h" {
+		return "1d"
+	}
+	return interval
+}
+
+// metricScoreLine formats "Overall Score: <label> (<value>/10.00)" for a metric
+// whose value and valueLabel are present; returns "" when unavailable.
+func metricScoreLine(detail *binance.BinanceAssetDetail, key string) string {
+	if detail == nil {
+		return ""
+	}
+	m, ok := detail.Metrics[key]
+	if !ok {
+		return ""
+	}
+	label := strings.TrimSpace(m.ValueLabel)
+	if label == "" {
+		label = strings.TrimSpace(m.Value)
+	}
+	val := strings.TrimSpace(m.Value)
+	if label == "" && val == "" {
+		return ""
+	}
+	if val != "" {
+		return fmt.Sprintf(" Overall Score: %s (%s/10.00)", label, val)
+	}
+	return fmt.Sprintf(" Overall Score: %s", label)
+}
+
+// categoryOrder defines the rendering order of Binance technical categories.
+// Entries not listed are appended after the known ones, in their API order.
+var categoryOrder = []string{"Trend Indicators", "Volatility Indicators", "Momentum Indicators", "Volume & Price Indicators"}
+
+// orderCategories returns the detail's categories sorted by categoryOrder.
+func orderCategories(detail *binance.BinanceAssetDetail) []binance.BinanceCategory {
+	if detail == nil || len(detail.Categories) == 0 {
+		return nil
+	}
+	rank := make(map[string]int, len(categoryOrder))
+	for i, c := range categoryOrder {
+		rank[c] = i
+	}
+	out := make([]binance.BinanceCategory, 0, len(detail.Categories))
+	for _, c := range detail.Categories {
+		out = append(out, c)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ri, rj := rank[out[i].Category], rank[out[j].Category]
+		// Known categories sort by their rank; unknown ones fall after known ones.
+		if ri >= 0 && rj >= 0 {
+			return ri < rj
+		}
+		return ri >= 0 && rj < 0
+	})
+	return out
+}
+
+// formatCategory renders one category's subindicator lines:
+// "  <Title>: <Signal> (score: <value>/10.00) - <Summary>"
+func formatCategory(cat binance.BinanceCategory) string {
+	if cat.Category == "" || len(cat.SubIndicators) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("--- " + cat.Category + " ---\n")
+	for _, sub := range cat.SubIndicators {
+		sb.WriteString(formatSubIndicator(sub))
+	}
+	return sb.String()
+}
+
+func formatSubIndicator(sub binance.BinanceSubIndicator) string {
+	score := ""
+	if sub.Score != "" {
+		score = fmt.Sprintf(" (score: %s/10.00)", sub.Score)
+	}
+	sig := sub.Signal
+	sum := strings.TrimSpace(sub.Summary)
+	if sum == "" {
+		sum = sig
+	}
+	return fmt.Sprintf("  %s: %s%s - %s\n", sub.Title, sig, score, sum)
+}
+
+// appendUncategorizedIndicators appends any technical_ind_*_signal_* subindicators
+// that have a numeric score but do NOT appear in any uiModules category (e.g.
+// Bollinger Bands). This ensures every scored subindicator reaches the LLM.
+func appendUncategorizedIndicators(sb *strings.Builder, detail *binance.BinanceAssetDetail, suffix string) {
+	if detail == nil {
+		return
+	}
+	// Collect titles already covered by the categories.
+	covered := make(map[string]bool)
+	for _, cat := range detail.Categories {
+		for _, sub := range cat.SubIndicators {
+			covered[sub.Title] = true
+		}
+	}
+	// Find *_signal_* metrics and pair each with its *_summary_* counterpart.
+	type uc struct{ title, signal, summary, score string }
+	var extras []uc
+	for key, m := range detail.Metrics {
+		if !strings.HasPrefix(key, "technical_ind_") || !strings.HasSuffix(key, "_signal_"+suffix) {
+			continue
+		}
+		if m.Label == "" || covered[m.Label] {
+			continue
+		}
+		sumKey := strings.TrimSuffix(key, "_signal_"+suffix) + "_summary_" + suffix
+		summary := ""
+		if s, ok := detail.Metrics[sumKey]; ok {
+			summary = strings.TrimSpace(s.ValueLabel)
+		}
+		extras = append(extras, uc{
+			title:   m.Label,
+			signal:  strings.TrimSpace(m.ValueLabel),
+			summary: summary,
+			score:   strings.TrimSpace(m.Value),
+		})
+	}
+	if len(extras) == 0 {
+		return
+	}
+	sort.Slice(extras, func(i, j int) bool { return extras[i].title < extras[j].title })
+	sb.WriteString("--- Other Indicators ---\n")
+	for _, e := range extras {
+		sub := binance.BinanceSubIndicator{
+			Title:   e.title,
+			Signal:  e.signal,
+			Summary: e.summary,
+			Score:   e.score,
+		}
+		sb.WriteString(formatSubIndicator(sub))
+	}
 }
 
 func (e *StrategyEngine) formatOIListLine(dur, list string, p nofxos.OIPosition) string {

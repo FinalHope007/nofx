@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"nofx/provider/binance"
 	"nofx/provider/nofxos"
 	"nofx/store"
 )
@@ -312,7 +313,14 @@ func TestFormatPerCoinSignalsBinance(t *testing.T) {
 	e := NewStrategyEngine(cfg)
 	e.SetPerCoinSignals(map[string]PerCoinSignal{
 		"BTCUSDT": {
-			BinanceTechnical: map[string]string{"1h|technical_summary_1h": "Bullish overall for BTC."},
+			BinanceTechnical: map[string]*binance.BinanceAssetDetail{
+				"1h": {
+					Metrics: map[string]binance.BinanceMetric{
+						"technical_summary_1h": {ValueLabel: "Bullish overall for BTC."},
+						"technical_score_1h":   {Value: "8.73", ValueLabel: "Strong Positive"},
+					},
+				},
+			},
 			BinanceSentiment: map[string]string{"sentiment_summary": "In the past 24h BTC was bullish."},
 		},
 	})
@@ -322,6 +330,80 @@ func TestFormatPerCoinSignalsBinance(t *testing.T) {
 	}
 	if !strings.Contains(out, "Sentiment") || !strings.Contains(out, "In the past 24h") {
 		t.Fatalf("missing sentiment section: %s", out)
+	}
+}
+
+func TestFormatPerCoinSignalsBinanceRichDetail(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.Indicators.EnableBinanceTechnicalData = true
+	cfg.Indicators.BinanceTechnicalIntervals = []string{"1h"}
+	e := NewStrategyEngine(cfg)
+	e.SetPerCoinSignals(map[string]PerCoinSignal{
+		"BTCUSDT": {
+			BinanceTechnical: map[string]*binance.BinanceAssetDetail{
+				"1h": {
+					Metrics: map[string]binance.BinanceMetric{
+						"technical_summary_1h":     {ValueLabel: "Bullish overall for BTC."},
+						"technical_score_1h":       {Value: "8.73", ValueLabel: "Strong Positive"},
+						"technical_score_trend_1h": {Value: "9.52", ValueLabel: "Bullish"},
+					},
+					Categories: []binance.BinanceCategory{
+						{
+							Category: "Trend Indicators",
+							SubIndicators: []binance.BinanceSubIndicator{
+								{Title: "MACD (Moving Average Convergence Divergence)", Signal: "Weak Bullish", Score: "7.00", Summary: "MACD remains weakly bullish."},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	out := e.formatPerCoinSignals("BTCUSDT", 60000)
+	for _, want := range []string{
+		"Binance Technical",
+		"Bullish overall",
+		"Overall Score: Strong Positive (8.73/10.00)",
+		"--- Trend Indicators ---",
+		"MACD (Moving Average Convergence Divergence): Weak Bullish (score: 7.00/10.00) - MACD remains weakly bullish.",	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestFormatPerCoinSignalsBinance24h(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.Indicators.EnableBinanceTechnicalData = true
+	cfg.Indicators.BinanceTechnicalIntervals = []string{"1h", "24h"}
+	e := NewStrategyEngine(cfg)
+	e.SetPerCoinSignals(map[string]PerCoinSignal{
+		"BTCUSDT": {
+			BinanceTechnical: map[string]*binance.BinanceAssetDetail{
+				"1h": {
+					Metrics: map[string]binance.BinanceMetric{
+						"technical_summary_1h": {ValueLabel: "Bullish 1h."},
+					},
+				},
+				"24h": {
+					Metrics: map[string]binance.BinanceMetric{
+						// The API uses the _1d suffix for the 24h interval.
+						"technical_summary_1d": {ValueLabel: "Bullish 24h."},
+						"technical_score_1d":   {Value: "7.50", ValueLabel: "Positive"},
+					},
+				},
+			},
+		},
+	})
+	out := e.formatPerCoinSignals("BTCUSDT", 60000)
+	if !strings.Contains(out, "[1h]") || !strings.Contains(out, "Bullish 1h.") {
+		t.Fatalf("missing 1h section:\n%s", out)
+	}
+	if !strings.Contains(out, "[24h]") || !strings.Contains(out, "Bullish 24h.") {
+		t.Fatalf("missing 24h section (24h uses _1d suffix):\n%s", out)
+	}
+	if !strings.Contains(out, "Overall Score: Positive (7.50/10.00)") {
+		t.Fatalf("missing 24h overall score:\n%s", out)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
+	"nofx/provider/binance"
 	"nofx/provider/nofxos"
 	"nofx/store"
 	"regexp"
@@ -291,11 +292,9 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 				}
 				sig := out[sym]
 				if sig.BinanceTechnical == nil {
-					sig.BinanceTechnical = make(map[string]string)
+					sig.BinanceTechnical = make(map[string]*binance.BinanceAssetDetail)
 				}
-				for k, v := range val {
-					sig.BinanceTechnical[iv+"|"+k] = v
-				}
+				sig.BinanceTechnical[iv] = val
 				out[sym] = sig
 			}
 		}
@@ -317,7 +316,7 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 			if sig.BinanceSentiment == nil {
 				sig.BinanceSentiment = make(map[string]string)
 			}
-			for k, v := range val {
+			for k, v := range val.LabelMap() {
 				sig.BinanceSentiment[k] = v
 			}
 			out[sym] = sig
