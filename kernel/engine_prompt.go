@@ -390,14 +390,12 @@ func writeVergexOutputFormat(sb *strings.Builder, accountEquity float64, riskCon
 	sb.WriteString("# Output Format (Strictly Follow)\n\n")
 	if zh {
 		sb.WriteString("Use XML tags <decision> and <reasoning> to separate the decision JSON from concise analysis.\n\n")
-		sb.WriteString("**Your response is limited to 2000 output tokens. Put the <decision> JSON FIRST so it is never cut off, then keep <reasoning> short and concise.**\n\n")
 		sb.WriteString("Direction must be data-driven: use `open_long` for confirmed upside structures and `open_short` for confirmed downside structures; never default to long-only or short-only behavior.\n\n")
 		if !singleSymbol {
 			sb.WriteString("Evaluate both directions every cycle, but enter a side only when its own signals independently justify it. Never open a position just to balance the book — an unbalanced book beats a forced trade.\n\n")
 		}
 	} else {
 		sb.WriteString("Use XML tags <decision> and <reasoning> to separate the decision JSON from concise analysis.\n\n")
-		sb.WriteString("**Your response is limited to 2000 output tokens. Put the <decision> JSON FIRST so it is never cut off, then keep <reasoning> short and concise.**\n\n")
 		sb.WriteString("Direction must be data-driven: use `open_long` for confirmed upside structures and `open_short` for confirmed downside structures; never default to long-only or short-only behavior.\n\n")
 		if !singleSymbol {
 			sb.WriteString("Evaluate both directions every cycle, but enter a side only when its own signals independently justify it. Never open a position just to balance the book — an unbalanced book beats a forced trade.\n\n")
@@ -415,9 +413,9 @@ func writeVergexOutputFormat(sb *strings.Builder, accountEquity float64, riskCon
 	sb.WriteString("</decision>\n\n")
 	sb.WriteString("<reasoning>\n")
 	if zh {
-		sb.WriteString("Briefly state whether Claw402 ranking, Signal Lab, heatmap and candles agree; if data is missing or conflicting, explain why you wait. (Keep concise; the <decision> JSON above is what matters)\n")
+		sb.WriteString("Briefly state whether Claw402 ranking, Signal Lab, heatmap and candles agree; if data is missing or conflicting, explain why you wait.\n")
 	} else {
-		sb.WriteString("Briefly state whether Claw402 ranking, Signal Lab, heatmap and candles agree; if data is missing or conflicting, explain why you wait. (Keep concise; the <decision> JSON above is what matters)\n")
+		sb.WriteString("Briefly state whether Claw402 ranking, Signal Lab, heatmap and candles agree; if data is missing or conflicting, explain why you wait.\n")
 	}
 	sb.WriteString("</reasoning>\n\n")
 
@@ -632,10 +630,8 @@ func writeOutputFormat(sb *strings.Builder, accountEquity, btcEthPosValueRatio f
 	sb.WriteString("# Output Format (Strictly Follow)\n\n")
 	if zh {
 		sb.WriteString("**Must use XML tags <decision> and <reasoning> to separate the decision JSON from chain of thought, avoiding parsing errors**\n\n")
-		sb.WriteString("**Your response is limited to 2000 output tokens. Put the <decision> JSON FIRST so it is never cut off, then keep <reasoning> short and concise.**\n\n")
 	} else {
 		sb.WriteString("**Must use XML tags <decision> and <reasoning> to separate the decision JSON from chain of thought, avoiding parsing errors**\n\n")
-		sb.WriteString("**Your response is limited to 2000 output tokens. Put the <decision> JSON FIRST so it is never cut off, then keep <reasoning> short and concise.**\n\n")
 	}
 	sb.WriteString("## Format Requirements\n\n")
 	sb.WriteString("<decision>\n")
@@ -668,9 +664,9 @@ func writeOutputFormat(sb *strings.Builder, accountEquity, btcEthPosValueRatio f
 	sb.WriteString("</decision>\n\n")
 	sb.WriteString("<reasoning>\n")
 	if zh {
-		sb.WriteString("Step 2: Your chain of thought analysis...\n- Briefly analyze your thinking process (keep concise; the <decision> JSON above is what matters)\n")
+		sb.WriteString("Step 2: Your chain of thought analysis...\n- Briefly analyze your thinking process by stating whether the indicators and OHLCV agree; if data is conflicting, explain why you wait\n")
 	} else {
-		sb.WriteString("Step 2: Your chain of thought analysis...\n- Briefly analyze your thinking process (keep concise; the <decision> JSON above is what matters)\n")
+		sb.WriteString("Step 2: Your chain of thought analysis...\n- Briefly analyze your thinking process by stating whether the indicators and OHLCV agree; if data is conflicting, explain why you wait\n")
 	}
 	sb.WriteString("</reasoning>\n\n")
 
