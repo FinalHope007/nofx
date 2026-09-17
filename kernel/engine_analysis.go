@@ -535,12 +535,9 @@ func extractCoTTrace(response string) string {
 		return strings.TrimSpace(match[1])
 	}
 
-	// With the output format flipped, the <decision> JSON comes FIRST and the
-	// <reasoning> block comes after it. When the response is truncated (no
-	// <reasoning> tag), fall back to everything after </decision>.
-	if endIdx := strings.Index(response, "</decision>"); endIdx >= 0 {
-		logger.Infof("✓ Extracted content after </decision> tag as reasoning chain")
-		return strings.TrimSpace(response[endIdx+len("</decision>"):])
+	if decisionIdx := strings.Index(response, "<decision>"); decisionIdx > 0 {
+		logger.Infof("✓ Extracted content before <decision> tag as reasoning chain")
+		return strings.TrimSpace(response[:decisionIdx])
 	}
 
 	jsonStart := strings.Index(response, "[")

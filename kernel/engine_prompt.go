@@ -389,20 +389,25 @@ func writeVergexOutputFormat(sb *strings.Builder, accountEquity float64, riskCon
 
 	sb.WriteString("# Output Format (Strictly Follow)\n\n")
 	if zh {
-		sb.WriteString("Use XML tags <decision> and <reasoning> to separate the decision JSON from concise analysis.\n\n")
-		sb.WriteString("**Your response is limited to 2000 output tokens. Put the <decision> JSON FIRST so it is never cut off, then keep <reasoning> short and concise.**\n\n")
+		sb.WriteString("Use XML tags <reasoning> and <decision> to separate concise analysis from the decision JSON.\n\n")
 		sb.WriteString("Direction must be data-driven: use `open_long` for confirmed upside structures and `open_short` for confirmed downside structures; never default to long-only or short-only behavior.\n\n")
 		if !singleSymbol {
 			sb.WriteString("Evaluate both directions every cycle, but enter a side only when its own signals independently justify it. Never open a position just to balance the book — an unbalanced book beats a forced trade.\n\n")
 		}
 	} else {
-		sb.WriteString("Use XML tags <decision> and <reasoning> to separate the decision JSON from concise analysis.\n\n")
-		sb.WriteString("**Your response is limited to 2000 output tokens. Put the <decision> JSON FIRST so it is never cut off, then keep <reasoning> short and concise.**\n\n")
+		sb.WriteString("Use XML tags <reasoning> and <decision> to separate concise analysis from the decision JSON.\n\n")
 		sb.WriteString("Direction must be data-driven: use `open_long` for confirmed upside structures and `open_short` for confirmed downside structures; never default to long-only or short-only behavior.\n\n")
 		if !singleSymbol {
 			sb.WriteString("Evaluate both directions every cycle, but enter a side only when its own signals independently justify it. Never open a position just to balance the book — an unbalanced book beats a forced trade.\n\n")
 		}
 	}
+	sb.WriteString("<reasoning>\n")
+	if zh {
+		sb.WriteString("Briefly state whether Claw402 ranking, Signal Lab, heatmap and candles agree; if data is missing or conflicting, explain why you wait.\n")
+	} else {
+		sb.WriteString("Briefly state whether Claw402 ranking, Signal Lab, heatmap and candles agree; if data is missing or conflicting, explain why you wait.\n")
+	}
+	sb.WriteString("</reasoning>\n\n")
 	sb.WriteString("<decision>\n")
 	sb.WriteString("```json\n[\n")
 	if singleSymbol {
@@ -413,13 +418,6 @@ func writeVergexOutputFormat(sb *strings.Builder, accountEquity float64, riskCon
 	}
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
-	sb.WriteString("<reasoning>\n")
-	if zh {
-		sb.WriteString("Briefly state whether Claw402 ranking, Signal Lab, heatmap and candles agree; if data is missing or conflicting, explain why you wait. (Keep concise; the <decision> JSON above is what matters)\n")
-	} else {
-		sb.WriteString("Briefly state whether Claw402 ranking, Signal Lab, heatmap and candles agree; if data is missing or conflicting, explain why you wait. (Keep concise; the <decision> JSON above is what matters)\n")
-	}
-	sb.WriteString("</reasoning>\n\n")
 
 	if zh {
 		sb.WriteString("## Field Requirements\n\n")
@@ -631,18 +629,23 @@ func writeOutputFormat(sb *strings.Builder, accountEquity, btcEthPosValueRatio f
 	// Output format schema MUST stay English/structural; parser depends on it.
 	sb.WriteString("# Output Format (Strictly Follow)\n\n")
 	if zh {
-		sb.WriteString("**Must use XML tags <decision> and <reasoning> to separate the decision JSON from chain of thought, avoiding parsing errors**\n\n")
-		sb.WriteString("**Your response is limited to 2000 output tokens. Put the <decision> JSON FIRST so it is never cut off, then keep <reasoning> short and concise.**\n\n")
+		sb.WriteString("**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors**\n\n")
 	} else {
-		sb.WriteString("**Must use XML tags <decision> and <reasoning> to separate the decision JSON from chain of thought, avoiding parsing errors**\n\n")
-		sb.WriteString("**Your response is limited to 2000 output tokens. Put the <decision> JSON FIRST so it is never cut off, then keep <reasoning> short and concise.**\n\n")
+		sb.WriteString("**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors**\n\n")
 	}
 	sb.WriteString("## Format Requirements\n\n")
+	sb.WriteString("<reasoning>\n")
+	if zh {
+		sb.WriteString("Your chain of thought analysis...\n- Briefly analyze your thinking process\n")
+	} else {
+		sb.WriteString("Your chain of thought analysis...\n- Briefly analyze your thinking process\n")
+	}
+	sb.WriteString("</reasoning>\n\n")
 	sb.WriteString("<decision>\n")
 	if zh {
-		sb.WriteString("Step 1: JSON decision array\n\n")
+		sb.WriteString("Step 2: JSON decision array\n\n")
 	} else {
-		sb.WriteString("Step 1: JSON decision array\n\n")
+		sb.WriteString("Step 2: JSON decision array\n\n")
 	}
 	sb.WriteString("```json\n[\n")
 
@@ -666,13 +669,6 @@ func writeOutputFormat(sb *strings.Builder, accountEquity, btcEthPosValueRatio f
 	}
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
-	sb.WriteString("<reasoning>\n")
-	if zh {
-		sb.WriteString("Step 2: Your chain of thought analysis...\n- Briefly analyze your thinking process (keep concise; the <decision> JSON above is what matters)\n")
-	} else {
-		sb.WriteString("Step 2: Your chain of thought analysis...\n- Briefly analyze your thinking process (keep concise; the <decision> JSON above is what matters)\n")
-	}
-	sb.WriteString("</reasoning>\n\n")
 
 	if zh {
 		sb.WriteString("## Field Description\n\n")
