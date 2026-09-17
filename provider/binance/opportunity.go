@@ -17,6 +17,15 @@ type OpportunityClient struct {
 	baseURL string
 }
 
+// DEPRECATED (2026-09-17): Binance has discontinued the "Binance Opportunity"
+// web API that this client consumes. Both endpoints below
+//
+//	GET {baseURL}/assets
+//	GET {baseURL}/asset-details?asset=...&type=...&interval=...&quote=USDT
+//
+// no longer return usable data. The client is intentionally retained as a
+// reference implementation for a future candidate-pool / per-coin data source.
+// Do not build new features on it.
 const opportunityBaseURL = "https://www.binance.com/bapi/apex/v1/friendly/apex/web/opportunity"
 
 func NewOpportunityClient() *OpportunityClient {
@@ -75,7 +84,7 @@ type BinanceSubIndicator struct {
 // BinanceCategory groups subindicator summaries by category from
 // uiModules.technicalIndicatorSummariesModule (technical scene only).
 type BinanceCategory struct {
-	Category     string                // e.g. "Trend Indicators"
+	Category      string // e.g. "Trend Indicators"
 	SubIndicators []BinanceSubIndicator
 }
 
@@ -127,6 +136,8 @@ type opportunityDetailResponse struct {
 	} `json:"data"`
 }
 
+// Deprecated: the Binance Opportunity asset-details feed is discontinued and no
+// longer returns usable data; retained as a reference implementation only.
 func (c *OpportunityClient) GetAssetDetails(ctx context.Context, symbol, scene, interval string) (*BinanceAssetDetail, error) {
 	if interval == "" {
 		interval = "1h"
@@ -323,6 +334,8 @@ func buildSubIndicator(title, itemSummary, itemSignal string, labelByBase map[st
 	return sub
 }
 
+// Deprecated: the Binance Opportunity assets feed is discontinued and no longer
+// returns usable data; retained as a reference implementation only.
 func (c *OpportunityClient) GetOpportunityAssets(ctx context.Context, interval, scene string) ([]OpportunityAsset, error) {
 	if scene == "" {
 		scene = "technical"

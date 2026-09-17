@@ -1,5 +1,12 @@
 # OI-Aware Candidate Pool + Pre-Cycle Binance Prefetch Design
 
+> **⚠️ Discontinued (2026-09-17):** Binance removed the Opportunity web API
+> (`/bapi/apex/v1/friendly/apex/web/opportunity/{assets,asset-details}`) that this
+> design depends on. The `binance_technical` / `binance_sentiment` scopes and
+> `enable_binance_technical_data` / `enable_binance_sentiment_data` toggles are
+> retained as reference implementations only and no longer return data. See
+> `docs/superpowers/plans/2026-09-17-binance-opportunity-discontinued-notice.md`.
+
 ## Goal
 
 Two related fixes for the Binance Opportunity candidate pipeline:

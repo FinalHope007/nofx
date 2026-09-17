@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Loader2, Save } from 'lucide-react'
 import { useStrategyDraft } from './draftStore'
 import { strategyManagerApi } from './strategyApi'
 import {
@@ -690,6 +690,12 @@ export function EditorStepPage() {
             <div className="mt-1 flex flex-wrap gap-2">
               <ToggleChip label="Binance Technical" active={enableBinanceTechnicalData} onClick={() => setEnableBinanceTechnicalData(!enableBinanceTechnicalData)} />
               <ToggleChip label="Binance Sentiment" active={enableBinanceSentimentData} onClick={() => setEnableBinanceSentimentData(!enableBinanceSentimentData)} />
+            </div>
+            <div className="mt-2 flex items-start gap-2 rounded-md border border-nofx-danger/25 bg-nofx-danger/10 p-2">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-nofx-danger" />
+              <p className="text-[11px] leading-snug text-nofx-danger">
+                Binance discontinued this data feed. These toggles are kept for reference and will produce no data.
+              </p>
             </div>
           </div>
 

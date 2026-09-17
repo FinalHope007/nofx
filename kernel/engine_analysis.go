@@ -268,6 +268,10 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 
 	// Binance Opportunity per-coin detail (free, per-symbol; read from TTL cache,
 	// fall back to a synchronous fetch on miss).
+	//
+	// NOTE: the Binance Opportunity feed is discontinued, so these details will
+	// not populate; retained as a reference implementation. No per-symbol log is
+	// emitted here to avoid log noise (fetch failures already log below).
 	apiCtx := ctx.Ctx
 	if apiCtx == nil {
 		apiCtx = context.Background()

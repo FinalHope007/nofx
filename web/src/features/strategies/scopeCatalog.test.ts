@@ -8,6 +8,14 @@ describe('scope catalog', () => {
     expect(free.every((c) => c.category === 'crypto')).toBe(true)
   })
 
+  it('marks exactly the two Binance opportunity cards as discontinued', () => {
+    const discontinued = SCOPE_CARD_DEFS.filter((c) => c.discontinued)
+    expect(discontinued.map((c) => c.id)).toEqual([
+      'crypto-binance-technical',
+      'crypto-binance-sentiment',
+    ])
+  })
+
   it('has paid bias-radar stock cards', () => {
     const bias = SCOPE_CARD_DEFS.filter((c) => c.label.includes('Bias Radar'))
     expect(bias.length).toBe(4) // 2 crypto + 2 stock

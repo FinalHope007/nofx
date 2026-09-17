@@ -189,12 +189,12 @@ type OIDeltaData struct {
 // PerCoinSignal carries the free per-coin enrichment data for one symbol
 // (AI500 score, OI / netflow / price change per selected duration).
 type PerCoinSignal struct {
-	AI500             *nofxos.CoinData                        // may be nil
-	OI                map[string]map[string]nofxos.OIPosition // duration -> list(top/low) -> data
-	Netflow           map[string]map[string]nofxos.NetFlowPosition
-	Price             map[string]map[string]nofxos.PriceRankingItem
-	BinanceTechnical  map[string]*binance.BinanceAssetDetail // interval -> parsed detail (may be nil)
-	BinanceSentiment  map[string]string                      // flattened sentiment detail labels (may be nil)
+	AI500            *nofxos.CoinData                        // may be nil
+	OI               map[string]map[string]nofxos.OIPosition // duration -> list(top/low) -> data
+	Netflow          map[string]map[string]nofxos.NetFlowPosition
+	Price            map[string]map[string]nofxos.PriceRankingItem
+	BinanceTechnical map[string]*binance.BinanceAssetDetail // interval -> parsed detail (may be nil)
+	BinanceSentiment map[string]string                      // flattened sentiment detail labels (may be nil)
 }
 
 // binanceOpportunityGetter abstracts the Binance Opportunity client for
@@ -217,8 +217,8 @@ type StrategyEngine struct {
 	trending   *nofxos.FreeTrendingClient
 
 	// Binance Opportunity client (technical + sentiment scopes)
-	opportunity     binanceOpportunityGetter
-	binanceDetails  *binanceDetailCache // free Binance per-coin detail TTL cache
+	opportunity    binanceOpportunityGetter
+	binanceDetails *binanceDetailCache // free Binance per-coin detail TTL cache
 
 	recentDecisions []*store.DecisionRecord // prior-cycle assistant responses (per-trader)
 
@@ -388,6 +388,9 @@ func (e *StrategyEngine) cacheBinanceDetail(key string, v *binance.BinanceAssetD
 // PrefetchBinanceDetails populates the binance detail cache for the given symbols,
 // gated by the EnableBinanceTechnicalData / EnableBinanceSentimentData flags.
 // This is safe to call from the trader loop before a cycle starts.
+//
+// Deprecated: this targets the discontinued Binance Opportunity feed and is
+// retained as a reference implementation only; it will not return usable data.
 func (e *StrategyEngine) PrefetchBinanceDetails(ctx context.Context, symbols []string) error {
 	if e == nil || e.binanceDetails == nil || e.opportunity == nil {
 		return nil
@@ -399,6 +402,7 @@ func (e *StrategyEngine) PrefetchBinanceDetails(ctx context.Context, symbols []s
 	if !cfg.Indicators.EnableBinanceTechnicalData && !cfg.Indicators.EnableBinanceSentimentData {
 		return nil
 	}
+	logger.Warnf("⚠️ Binance Opportunity feed is discontinued; PrefetchBinanceDetails will not return usable data")
 	for _, sym := range symbols {
 		base := strings.TrimSuffix(sym, "USDT")
 		if cfg.Indicators.EnableBinanceTechnicalData {
@@ -973,11 +977,17 @@ func (e *StrategyEngine) getHyperRankCoins(category, direction string, limit int
 	return candidates, nil
 }
 
+// getBinanceOpportunityCoins returns candidate coins from the Binance
+// Opportunity feed.
+//
+// Deprecated: the Binance Opportunity feed is discontinued and is retained as a
+// reference implementation only; this will return no candidates.
 func (e *StrategyEngine) getBinanceOpportunityCoins(scene, interval, direction string, limit int) ([]CandidateCoin, error) {
 	direction = strings.ToLower(strings.TrimSpace(direction))
 	if direction == "" {
 		direction = "top"
 	}
+	logger.Warnf("⚠️ Binance Opportunity feed is discontinued; coin source %q will return no candidates", "binance_"+scene)
 	assets, err := e.opportunity.GetOpportunityAssets(context.Background(), interval, scene)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch Binance %s opportunity: %w", scene, err)

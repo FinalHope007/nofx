@@ -9,6 +9,7 @@ export interface ScopeCardDef {
   source_type: ScopeUnit['source_type']
   variant?: ScopeVariant
   defaultLimit: number
+  discontinued?: boolean
 }
 
 // Free = Hyperliquid-native, works with existing backend today.
@@ -42,6 +43,7 @@ const freeBinanceOpportunity = (
   source_type,
   variant: 'binance',
   defaultLimit: 10,
+  discontinued: true,
 })
 
 export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
@@ -64,8 +66,8 @@ export const SCOPE_CARD_DEFS: ScopeCardDef[] = [
     'volume'
   ),
 
-  freeBinanceOpportunity('crypto-binance-technical', 'Binance Technical', 'Top technical score (1h/24h) on Binance Opportunity', 'binance_technical'),
-  freeBinanceOpportunity('crypto-binance-sentiment', 'Binance Sentiment', 'Top sentiment score on Binance Opportunity', 'binance_sentiment'),
+  freeBinanceOpportunity('crypto-binance-technical', 'Binance Technical', 'Top technical score (1h/24h) on Binance Opportunity — discontinued, no longer returns data', 'binance_technical'),
+  freeBinanceOpportunity('crypto-binance-sentiment', 'Binance Sentiment', 'Top sentiment score on Binance Opportunity — discontinued, no longer returns data', 'binance_sentiment'),
 
   // Crypto — PAID / provider pending
   {

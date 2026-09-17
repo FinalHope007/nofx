@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { useStrategyDraft } from './draftStore'
 import { SCOPE_CARD_DEFS, toScopeUnit } from './scopeCatalog'
 import { strategyManagerApi } from './strategyApi'
@@ -245,19 +245,34 @@ export function ScopeStepPage() {
                 <span className="text-sm font-semibold text-nofx-text">
                   {def.label}
                 </span>
-                <span
-                  className={`rounded px-2 py-0.5 text-[10px] font-semibold ${
-                    def.provider === 'free'
-                      ? 'bg-nofx-success/15 text-nofx-success'
-                      : 'bg-nofx-danger/15 text-nofx-danger'
-                  }`}
-                >
-                  {def.provider === 'free' ? 'FREE' : 'PAID'}
-                </span>
+                <div className="flex items-center gap-1">
+                  {def.discontinued && (
+                    <span className="rounded px-2 py-0.5 text-[10px] font-semibold bg-nofx-danger/15 text-nofx-danger">
+                      DISCONTINUED
+                    </span>
+                  )}
+                  <span
+                    className={`rounded px-2 py-0.5 text-[10px] font-semibold ${
+                      def.provider === 'free'
+                        ? 'bg-nofx-success/15 text-nofx-success'
+                        : 'bg-nofx-danger/15 text-nofx-danger'
+                    }`}
+                  >
+                    {def.provider === 'free' ? 'FREE' : 'PAID'}
+                  </span>
+                </div>
               </div>
               <p className="mt-1 text-xs text-nofx-text-muted">
                 {def.description}
               </p>
+              {active && def.discontinued && (
+                <div className="mt-2 flex items-start gap-2 rounded-md border border-nofx-danger/30 bg-nofx-danger/10 p-2">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-nofx-danger" />
+                  <p className="text-[11px] leading-snug text-nofx-danger">
+                    Binance discontinued this data feed. This scope is kept for reference and will return no coins.
+                  </p>
+                </div>
+              )}
               <div className="mt-3 flex items-center gap-2">
                 <label className="text-xs text-nofx-text-muted">Top</label>
                 <input
