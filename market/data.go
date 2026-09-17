@@ -508,6 +508,42 @@ func formatTimeframeData(sb *strings.Builder, data *TimeframeSeriesData) {
 	sb.WriteString("\n")
 }
 
+// FormatPriceSigFigs renders a price at the exchange-standard precision:
+// 5 significant figures with a floor of 2 decimal places. This mirrors the
+// exchange rule (e.g. Hyperliquid's 5-sig-fig requirement) so the value the
+// LLM sees carries the same significant figures as the exchange platform:
+//
+//	76708.9123 → "76708.91"   (floor of 2dp keeps the cents)
+//	2456.785   → "2456.78"    (5 sig figs, floored to 2dp)
+//	123.4567   → "123.46"
+//	0.005568   → "0.0055680"
+//	0.0000207  → "0.000020700"
+//
+// The formatter only ever adds precision to reach 5 significant figures; an
+// exchange value with fewer significant figures passes through unchanged (no
+// rounding to a coarser value). Trailing zeros are retained, so callers that
+// want a compact display should strip them or treat this as the canonical
+// numeric representation. Non-finite/zero values fall back to a plain render.
+func FormatPriceSigFigs(price float64) string {
+	if price == 0 {
+		return "0.00"
+	}
+	abs := price
+	if abs < 0 {
+		abs = -abs
+	}
+	if math.IsNaN(abs) || math.IsInf(abs, 0) {
+		return fmt.Sprintf("%.2f", price)
+	}
+	// Decimal places needed for 5 significant figures.
+	exp := int(math.Floor(math.Log10(abs)))
+	decimals := 5 - 1 - exp
+	if decimals < 2 {
+		decimals = 2
+	}
+	return fmt.Sprintf("%.*f", decimals, price)
+}
+
 // formatPriceWithDynamicPrecision dynamically selects precision based on price range
 // This perfectly supports all coins from ultra-low price meme coins (< 0.0001) to BTC/ETH
 func formatPriceWithDynamicPrecision(price float64) string {

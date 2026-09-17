@@ -410,6 +410,9 @@ func writeVergexOutputFormat(sb *strings.Builder, accountEquity float64, riskCon
 	sb.WriteString("</reasoning>\n\n")
 	sb.WriteString("<decision>\n")
 	sb.WriteString("```json\n[\n")
+	// Price examples use exchange-standard significant figures (5 sig figs,
+	// floor of 2 decimals): high-priced coins keep their cents, e.g. 76708.91
+	// for BTC, while low-priced coins keep their magnitude, e.g. 0.005568.
 	if singleSymbol {
 		sb.WriteString(fmt.Sprintf("  {\"symbol\": \"%s\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 0, \"take_profit\": 0, \"confidence\": 85, \"risk_usd\": 0}\n", exampleSymbol, leverage, positionSize))
 	} else {
@@ -675,6 +678,7 @@ func writeOutputFormat(sb *strings.Builder, accountEquity, btcEthPosValueRatio f
 		sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
 		sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
 		sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
+		sb.WriteString("- **Price precision**: use the same significant figures as the prices shown in `## Market Data` (e.g. `76708.91` for BTC, `0.0055680` for a sub-cent coin). Do not round prices to a fixed number of decimals.\n")
 		sb.WriteString("- **IMPORTANT**: all numeric values must be calculated numbers, NOT formulas/expressions (e.g. use `27.76`, not `3000 * 0.01`)\n")
 		if singleSymbol {
 			sb.WriteString(fmt.Sprintf("- **This strategy trades only %s.** The JSON `symbol` MUST match `%s` exactly — do not write `%s` variants that drop the suffix or add USDT.\n", primarySymbol, primarySymbol, primarySymbol))
@@ -685,6 +689,7 @@ func writeOutputFormat(sb *strings.Builder, accountEquity, btcEthPosValueRatio f
 		sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
 		sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
 		sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
+		sb.WriteString("- **Price precision**: use the same significant figures as the prices shown in `## Market Data` (e.g. `76708.91` for BTC, `0.0055680` for a sub-cent coin). Do not round prices to a fixed number of decimals.\n")
 		sb.WriteString("- **IMPORTANT**: all numeric values must be calculated numbers, NOT formulas/expressions (e.g. use `27.76`, not `3000 * 0.01`)\n")
 		if singleSymbol {
 			sb.WriteString(fmt.Sprintf("- **This strategy trades only %s.** The JSON `symbol` MUST match `%s` exactly — do not add USDT/USDC suffix variants.\n", primarySymbol, primarySymbol))
@@ -782,8 +787,8 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 
 	// BTC market
 	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {
-		sb.WriteString(fmt.Sprintf("BTC: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
-			btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h,
+		sb.WriteString(fmt.Sprintf("BTC: %s (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
+			market.FormatPriceSigFigs(btcData.CurrentPrice), btcData.PriceChange1h, btcData.PriceChange4h,
 			btcData.CurrentMACD, btcData.CurrentRSI7))
 	}
 
@@ -804,9 +809,9 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 			if order.RealizedPnL < 0 {
 				resultStr = "Loss"
 			}
-			sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %.4f Exit %.4f | %s: %+.2f USDT (%+.2f%%) | %s→%s (%s)\n",
+			sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %s Exit %s | %s: %+.2f USDT (%+.2f%%) | %s→%s (%s)\n",
 				i+1, order.Symbol, order.Side,
-				order.EntryPrice, order.ExitPrice,
+				market.FormatPriceSigFigs(order.EntryPrice), market.FormatPriceSigFigs(order.ExitPrice),
 				resultStr, order.RealizedPnL, order.PnLPct,
 				order.EntryTime, order.ExitTime, order.HoldDuration))
 		}
@@ -975,10 +980,10 @@ func (e *StrategyEngine) formatPositionInfo(index int, pos PositionInfo, ctx *Co
 		positionValue = -positionValue
 	}
 
-	sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %.4f Current %.4f | Qty %.4f | Position Value %.2f USDT | PnL%+.2f%% | PnL Amount%+.2f USDT | Peak PnL%.2f%% | Leverage %dx | Margin %.0f | Liq Price %.4f%s\n\n",
+	sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %s Current %s | Qty %.4f | Position Value %.2f USDT | PnL%+.2f%% | PnL Amount%+.2f USDT | Peak PnL%.2f%% | Leverage %dx | Margin %.0f | Liq Price %s%s\n\n",
 		index, pos.Symbol, strings.ToUpper(pos.Side),
-		pos.EntryPrice, pos.MarkPrice, pos.Quantity, positionValue, pos.UnrealizedPnLPct, pos.UnrealizedPnL, pos.PeakPnLPct,
-		pos.Leverage, pos.MarginUsed, pos.LiquidationPrice, holdingDuration))
+		market.FormatPriceSigFigs(pos.EntryPrice), market.FormatPriceSigFigs(pos.MarkPrice), pos.Quantity, positionValue, pos.UnrealizedPnLPct, pos.UnrealizedPnL, pos.PeakPnLPct,
+		pos.Leverage, pos.MarginUsed, market.FormatPriceSigFigs(pos.LiquidationPrice), holdingDuration))
 
 	if marketData, ok := ctx.MarketDataMap[pos.Symbol]; ok {
 		sb.WriteString(e.formatMarketData(marketData))
@@ -1017,8 +1022,8 @@ func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float6
 
 	if ind.EnableAI500Data && sig.AI500 != nil {
 		sb.WriteString(fmt.Sprintf("=== %s AI500 Signal ===\n", symbol))
-		sb.WriteString(fmt.Sprintf("AI score %.1f/100 | peak score %.0f | current price %.4f | start price %.4f | change %+.1f%% since starting alert\n\n",
-			sig.AI500.Score, sig.AI500.PeakScore, currentPrice, sig.AI500.StartPrice, sig.AI500.IncreasePercent))
+		sb.WriteString(fmt.Sprintf("AI score %.1f/100 | peak score %.0f | current price %s | start price %s | change %+.1f%% since starting alert\n\n",
+			sig.AI500.Score, sig.AI500.PeakScore, market.FormatPriceSigFigs(currentPrice), market.FormatPriceSigFigs(sig.AI500.StartPrice), sig.AI500.IncreasePercent))
 	}
 
 	if ind.EnableOIData {
@@ -1182,9 +1187,9 @@ var categoryOrder = []string{"Trend Indicators", "Volatility Indicators", "Momen
 // categoryScoreKey maps a category name to the suffix of its technical_score_*_<suffix>
 // metric (e.g. "Volatility Indicators" -> "volatility" for technical_score_volatility_1h).
 var categoryScoreKey = map[string]string{
-	"Trend Indicators":        "trend",
-	"Volatility Indicators":   "volatility",
-	"Momentum Indicators":     "momentum",
+	"Trend Indicators":          "trend",
+	"Volatility Indicators":     "volatility",
+	"Momentum Indicators":       "momentum",
 	"Volume & Price Indicators": "volprice",
 }
 
@@ -1332,7 +1337,7 @@ func (e *StrategyEngine) formatOIListLine(dur, list string, p nofxos.OIPosition)
 }
 
 func (e *StrategyEngine) formatNetflowListLine(dur, dir string, p nofxos.NetFlowPosition) string {
-	return fmt.Sprintf("[%s \u00b7 %s] rank #%d | net flow %s | price %.4f\n", dur, dir, p.Rank, formatUSDCompact(p.Amount), p.Price)
+	return fmt.Sprintf("[%s \u00b7 %s] rank #%d | net flow %s | price %s\n", dur, dir, p.Rank, formatUSDCompact(p.Amount), market.FormatPriceSigFigs(p.Price))
 }
 
 func (e *StrategyEngine) formatPriceListLine(dur string, p nofxos.PriceRankingItem) string {
@@ -1456,7 +1461,7 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 
 	// Clearly label the coin symbol
 	sb.WriteString(fmt.Sprintf("=== %s Market Data ===\n\n", data.Symbol))
-	sb.WriteString(fmt.Sprintf("current_price = %.4f", data.CurrentPrice))
+	sb.WriteString(fmt.Sprintf("current_price = %s", market.FormatPriceSigFigs(data.CurrentPrice)))
 
 	if indicators.EnableEMA {
 		sb.WriteString(fmt.Sprintf(", current_ema20 = %.3f", data.CurrentEMA20))
@@ -1500,11 +1505,11 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 			sb.WriteString(fmt.Sprintf("Intraday series (%s intervals, oldest → latest):\n\n", klineConfig.PrimaryTimeframe))
 
 			if len(data.IntradaySeries.MidPrices) > 0 {
-				sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatFloatSlice(data.IntradaySeries.MidPrices)))
+				sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatPriceSlice(data.IntradaySeries.MidPrices)))
 			}
 
 			if indicators.EnableEMA && len(data.IntradaySeries.EMA20Values) > 0 {
-				sb.WriteString(fmt.Sprintf("EMA indicators (20-period): %s\n\n", formatFloatSlice(data.IntradaySeries.EMA20Values)))
+				sb.WriteString(fmt.Sprintf("EMA indicators (20-period): %s\n\n", formatPriceSlice(data.IntradaySeries.EMA20Values)))
 			}
 
 			if indicators.EnableMACD && len(data.IntradaySeries.MACDValues) > 0 {
@@ -1570,12 +1575,17 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 			if i == len(data.Klines)-1 {
 				marker = "  <- current"
 			}
-			sb.WriteString(fmt.Sprintf("%-14s %-9.4f %-9.4f %-9.4f %-9.4f %-12.2f%s\n",
-				timeStr, k.Open, k.High, k.Low, k.Close, k.Volume, marker))
+			sb.WriteString(fmt.Sprintf("%-14s %-11s %-11s %-11s %-11s %-12.2f%s\n",
+				timeStr,
+				market.FormatPriceSigFigs(k.Open),
+				market.FormatPriceSigFigs(k.High),
+				market.FormatPriceSigFigs(k.Low),
+				market.FormatPriceSigFigs(k.Close),
+				k.Volume, marker))
 		}
 		sb.WriteString("\n")
 	} else if len(data.MidPrices) > 0 {
-		sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatFloatSlice(data.MidPrices)))
+		sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatPriceSlice(data.MidPrices)))
 		if indicators.EnableVolume && len(data.Volume) > 0 {
 			sb.WriteString(fmt.Sprintf("Volume: %s\n\n", formatFloatSlice(data.Volume)))
 		}
@@ -1583,10 +1593,10 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 
 	if indicators.EnableEMA {
 		if len(data.EMA20Values) > 0 {
-			sb.WriteString(fmt.Sprintf("EMA20: %s\n", formatFloatSlice(data.EMA20Values)))
+			sb.WriteString(fmt.Sprintf("EMA20: %s\n", formatPriceSlice(data.EMA20Values)))
 		}
 		if len(data.EMA50Values) > 0 {
-			sb.WriteString(fmt.Sprintf("EMA50: %s\n", formatFloatSlice(data.EMA50Values)))
+			sb.WriteString(fmt.Sprintf("EMA50: %s\n", formatPriceSlice(data.EMA50Values)))
 		}
 	}
 
@@ -1604,13 +1614,13 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 	}
 
 	if indicators.EnableATR && data.ATR14 > 0 {
-		sb.WriteString(fmt.Sprintf("ATR14: %.4f\n", data.ATR14))
+		sb.WriteString(fmt.Sprintf("ATR14: %s\n", market.FormatPriceSigFigs(data.ATR14)))
 	}
 
 	if indicators.EnableBOLL && len(data.BOLLUpper) > 0 {
-		sb.WriteString(fmt.Sprintf("BOLL Upper: %s\n", formatFloatSlice(data.BOLLUpper)))
-		sb.WriteString(fmt.Sprintf("BOLL Middle: %s\n", formatFloatSlice(data.BOLLMiddle)))
-		sb.WriteString(fmt.Sprintf("BOLL Lower: %s\n", formatFloatSlice(data.BOLLLower)))
+		sb.WriteString(fmt.Sprintf("BOLL Upper: %s\n", formatPriceSlice(data.BOLLUpper)))
+		sb.WriteString(fmt.Sprintf("BOLL Middle: %s\n", formatPriceSlice(data.BOLLMiddle)))
+		sb.WriteString(fmt.Sprintf("BOLL Lower: %s\n", formatPriceSlice(data.BOLLLower)))
 	}
 
 	sb.WriteString("\n")
@@ -1724,6 +1734,17 @@ func formatFloatSlice(values []float64) string {
 	strValues := make([]string, len(values))
 	for i, v := range values {
 		strValues[i] = fmt.Sprintf("%.4f", v)
+	}
+	return "[" + strings.Join(strValues, ", ") + "]"
+}
+
+// formatPriceSlice renders a series of price-like values (mid prices, EMA,
+// Bollinger bands) at the exchange-standard significant-figure precision so the
+// LLM sees the same significant figures as the exchange platform.
+func formatPriceSlice(values []float64) string {
+	strValues := make([]string, len(values))
+	for i, v := range values {
+		strValues[i] = market.FormatPriceSigFigs(v)
 	}
 	return "[" + strings.Join(strValues, ", ") + "]"
 }

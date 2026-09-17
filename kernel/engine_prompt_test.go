@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"nofx/market"
 	"nofx/provider/binance"
 	"nofx/provider/nofxos"
 	"nofx/store"
@@ -365,7 +366,7 @@ func TestFormatPerCoinSignalsBinanceRichDetail(t *testing.T) {
 		"Bullish overall",
 		"Overall Score: Strong Positive (8.73/10.00)",
 		"--- Trend Indicators (Score: Bullish 9.52/10.00) ---",
-		"MACD (Moving Average Convergence Divergence): Weak Bullish (score: 7.00/10.00) - MACD remains weakly bullish.",	} {
+		"MACD (Moving Average Convergence Divergence): Weak Bullish (score: 7.00/10.00) - MACD remains weakly bullish."} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
@@ -417,13 +418,13 @@ func TestFormatPerCoinSignalsBinance24hCategoryScoreAndSummary(t *testing.T) {
 			BinanceTechnical: map[string]*binance.BinanceAssetDetail{
 				"24h": {
 					Metrics: map[string]binance.BinanceMetric{
-						"technical_summary_1d":             {ValueLabel: "Bullish near term."},
-						"technical_score_1d":               {Value: "7.23", ValueLabel: "Positive"},
-						"technical_score_volatility_1d":    {Value: "7.40", ValueLabel: "Volatility Expansion"},
-						"technical_ind_rsi_signal_1d":      {Value: "7.00", ValueLabel: "Neutral to Bullish", Label: "RSI (Relative Strength Index)"},
-						"technical_ind_rsi_summary_1d":     {Value: "RSI at 58 shows momentum.", ValueLabel: "RSI at 58 shows momentum.", Label: "technical_ind_rsi_summary_1d_name"},
-						"technical_ind_atr_signal_1d":      {Value: "10.00", ValueLabel: "Extreme Volatility", Label: "ATR (Average True Range)"},
-						"technical_ind_atr_summary_1d":     {Value: "ATR signals extreme volatility.", ValueLabel: "ATR signals extreme volatility.", Label: "technical_ind_atr_summary_1d_name"},
+						"technical_summary_1d":          {ValueLabel: "Bullish near term."},
+						"technical_score_1d":            {Value: "7.23", ValueLabel: "Positive"},
+						"technical_score_volatility_1d": {Value: "7.40", ValueLabel: "Volatility Expansion"},
+						"technical_ind_rsi_signal_1d":   {Value: "7.00", ValueLabel: "Neutral to Bullish", Label: "RSI (Relative Strength Index)"},
+						"technical_ind_rsi_summary_1d":  {Value: "RSI at 58 shows momentum.", ValueLabel: "RSI at 58 shows momentum.", Label: "technical_ind_rsi_summary_1d_name"},
+						"technical_ind_atr_signal_1d":   {Value: "10.00", ValueLabel: "Extreme Volatility", Label: "ATR (Average True Range)"},
+						"technical_ind_atr_summary_1d":  {Value: "ATR signals extreme volatility.", ValueLabel: "ATR signals extreme volatility.", Label: "technical_ind_atr_summary_1d_name"},
 					},
 					Categories: []binance.BinanceCategory{
 						{Category: "Volatility Indicators", SubIndicators: []binance.BinanceSubIndicator{
@@ -462,5 +463,68 @@ func TestRenderRecentDecisionsDigestAndDisabled(t *testing.T) {
 	out := renderRecentDecisions(&digest, records)
 	if !strings.Contains(out, "a very long response") {
 		t.Fatalf("digest missing snippet: %q", out)
+	}
+}
+
+// TestFormatMarketDataSigFigs verifies that price-like fields in the prompt are
+// rendered with exchange-standard significant figures (5 sig figs, floor 2dp)
+// rather than a fixed 4 decimal places.
+func TestFormatMarketDataSigFigs(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	e := NewStrategyEngine(cfg)
+
+	data := &market.Data{
+		Symbol:       "BTCUSDT",
+		CurrentPrice: 76708.9123,
+		TimeframeData: map[string]*market.TimeframeSeriesData{
+			"1h": {
+				Timeframe: "1h",
+				Klines: []market.KlineBar{
+					{Time: 1700000000000, Open: 76700.1234, High: 76800.9876, Low: 76650.5432, Close: 76708.9123, Volume: 12.5},
+				},
+			},
+		},
+	}
+	out := e.formatMarketData(data)
+
+	if !strings.Contains(out, "current_price = 76708.91") {
+		t.Fatalf("current_price not at exchange precision:\n%s", out)
+	}
+	// The OHLC table must keep 5 sig figs (BTC keeps its cents).
+	if !strings.Contains(out, "76700.12") || !strings.Contains(out, "76800.99") ||
+		!strings.Contains(out, "76650.54") || !strings.Contains(out, "76708.91") {
+		t.Fatalf("OHLC row not at exchange precision:\n%s", out)
+	}
+	// Must not fall back to the old fixed 4-decimal rendering.
+	if strings.Contains(out, "76708.9123") {
+		t.Fatalf("unexpected full-precision leakage:\n%s", out)
+	}
+}
+
+// TestFormatMarketDataSigFigsLowPriceCoin verifies sub-cent coins keep their
+// magnitude instead of being flattened to 4 decimals.
+func TestFormatMarketDataSigFigsLowPriceCoin(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	e := NewStrategyEngine(cfg)
+
+	data := &market.Data{
+		Symbol:       "PEPEUSDT",
+		CurrentPrice: 0.005568,
+		TimeframeData: map[string]*market.TimeframeSeriesData{
+			"1h": {
+				Timeframe: "1h",
+				Klines: []market.KlineBar{
+					{Time: 1700000000000, Open: 0.0055, High: 0.0056, Low: 0.0054, Close: 0.005568, Volume: 100},
+				},
+			},
+		},
+	}
+	out := e.formatMarketData(data)
+
+	if !strings.Contains(out, "current_price = 0.0055680") {
+		t.Fatalf("sub-cent current_price lost precision:\n%s", out)
+	}
+	if !strings.Contains(out, "0.0055680") {
+		t.Fatalf("sub-cent OHLC close lost precision:\n%s", out)
 	}
 }
