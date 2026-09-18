@@ -385,11 +385,23 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 	if cfg.CoinSource.SourceType != "vergex_signal" &&
 		(cfg.Indicators.EnableVergexSignalLabData || cfg.Indicators.EnableVergexHeatmapData) &&
 		engine.freeClient != nil {
+		// Mirror FetchVergexDataBatch's query conventions: default the market
+		// type when blank (else the API rejects the request) and normalize the
+		// chain + symbol so XYZ/stock families resolve correctly.
+		marketType := cfg.CoinSource.VergexMarketType
+		if marketType == "" {
+			marketType = vergex.DefaultMarketType
+		}
+		chain := vergex.QueryChain(cfg.CoinSource.VergexChain)
 		for sym := range symSet {
+			lookupSym := vergexDetailSymbolForLookup(marketType, sym)
+			if lookupSym == "" {
+				continue
+			}
 			q := vergex.Query{
-				MarketType: cfg.CoinSource.VergexMarketType,
-				Symbol:     sym,
-				Chain:      cfg.CoinSource.VergexChain,
+				MarketType: marketType,
+				Symbol:     lookupSym,
+				Chain:      chain,
 				LiqBand:    cfg.CoinSource.VergexLiqBand,
 			}
 			sig := out[sym]

@@ -2,9 +2,13 @@ package kernel
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
+	"nofx/provider/vergex"
 	"nofx/store"
 )
 
@@ -96,5 +100,100 @@ func TestAttachPerCoinSignalsAltFins(t *testing.T) {
 	sig, ok := engine.PerCoinSignalFor("ZECUSDT")
 	if !ok || sig.AltFins["MINUTES15"] == nil {
 		t.Fatalf("expected AltFins signal, got %+v ok=%v", sig, ok)
+	}
+}
+
+func TestAttachPerCoinSignalsVergexSignalLab(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.RequestURI
+		w.Write([]byte(`{"signal_lab":"ok"}`))
+	}))
+	defer srv.Close()
+
+	cfg := &store.StrategyConfig{}
+	cfg.CoinSource.SourceType = "ai500"
+	cfg.Indicators.EnableVergexSignalLabData = true
+
+	engine := NewStrategyEngine(cfg)
+	fc, err := vergex.NewFreeClient(srv.URL, "", nil)
+	if err != nil {
+		t.Fatalf("NewFreeClient: %v", err)
+	}
+	engine.freeClient = fc
+
+	ctx := &Context{
+		CandidateCoins: []CandidateCoin{{Symbol: "ZECUSDT"}},
+		Ctx:            context.Background(),
+	}
+	if err := attachPerCoinSignals(ctx, engine); err != nil {
+		t.Fatalf("attachPerCoinSignals: %v", err)
+	}
+	sig, ok := engine.PerCoinSignalFor("ZECUSDT")
+	if !ok || len(sig.VergexSignalLab) == 0 {
+		t.Fatalf("expected Vergex signal lab, got %+v ok=%v", sig, ok)
+	}
+	if !strings.Contains(gotPath, "xyz%3AZEC/signals") {
+		t.Fatalf("expected normalized symbol path, got %q", gotPath)
+	}
+	if !strings.Contains(gotPath, "chain=mainnet") {
+		t.Fatalf("expected normalized chain in request, got %q", gotPath)
+	}
+}
+
+func TestAttachPerCoinSignalsVergexSkipsForVergexSignalSource(t *testing.T) {
+	hit := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.Write([]byte(`{"signal_lab":"ok"}`))
+	}))
+	defer srv.Close()
+
+	cfg := &store.StrategyConfig{}
+	cfg.CoinSource.SourceType = "vergex_signal"
+	cfg.Indicators.EnableVergexSignalLabData = true
+
+	engine := NewStrategyEngine(cfg)
+	fc, err := vergex.NewFreeClient(srv.URL, "", nil)
+	if err != nil {
+		t.Fatalf("NewFreeClient: %v", err)
+	}
+	engine.freeClient = fc
+
+	ctx := &Context{
+		CandidateCoins: []CandidateCoin{{Symbol: "ZECUSDT"}},
+		Ctx:            context.Background(),
+	}
+	if err := attachPerCoinSignals(ctx, engine); err != nil {
+		t.Fatalf("attachPerCoinSignals: %v", err)
+	}
+	if hit {
+		t.Fatalf("expected no vergex detail fetch for vergex_signal source")
+	}
+	sig, _ := engine.PerCoinSignalFor("ZECUSDT")
+	if len(sig.VergexSignalLab) != 0 {
+		t.Fatalf("expected no signal lab for vergex_signal source, got %s", sig.VergexSignalLab)
+	}
+}
+
+func TestAttachPerCoinSignalsVergexSkipsWithoutClient(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.CoinSource.SourceType = "ai500"
+	cfg.Indicators.EnableVergexSignalLabData = true
+
+	engine := NewStrategyEngine(cfg)
+	engine.freeClient = nil
+
+	ctx := &Context{
+		CandidateCoins: []CandidateCoin{{Symbol: "ZECUSDT"}},
+		Ctx:            context.Background(),
+	}
+	if err := attachPerCoinSignals(ctx, engine); err != nil {
+		t.Fatalf("attachPerCoinSignals: %v", err)
+	}
+	sig, _ := engine.PerCoinSignalFor("ZECUSDT")
+	if len(sig.VergexSignalLab) != 0 {
+		t.Fatalf("expected no signal lab without client, got %s", sig.VergexSignalLab)
 	}
 }
