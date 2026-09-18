@@ -1177,11 +1177,17 @@ func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float6
 				continue
 			}
 			label := altfins.IntervalLabel(iv)
-			sb.WriteString(fmt.Sprintf("[%s] Short Term Trend: %s, changed from %s\n", label, a.ShortTermTrend, a.ShortTermTrendChange))
-			sb.WriteString(fmt.Sprintf("      Medium Term Trend: %s, changed from %s\n", a.MediumTermTrend, a.MediumTermTrendChange))
-			sb.WriteString(fmt.Sprintf("      Long Term Trend: %s, changed from %s\n", a.LongTermTrend, a.LongTermTrendChange))
+			sb.WriteString("[" + label + "] " + strings.TrimPrefix(
+				trendLine("Short Term Trend", a.ShortTermTrend, a.ShortTermTrendChange),
+				"      "))
+			sb.WriteString(trendLine("Medium Term Trend", a.MediumTermTrend, a.MediumTermTrendChange))
+			sb.WriteString(trendLine("Long Term Trend", a.LongTermTrend, a.LongTermTrendChange))
 			if a.MACDSignal != "" {
-				sb.WriteString(fmt.Sprintf("      MACD Signal: %s crossover, %d bars ago (%s)\n", a.MACDSignal, a.MACDSignalBarsAgo, a.MACDSignalAgeText))
+				age := ""
+				if a.MACDSignalAgeText != "" {
+					age = fmt.Sprintf(" (%s)", a.MACDSignalAgeText)
+				}
+				sb.WriteString(fmt.Sprintf("      MACD Signal: %s crossover, %d bars ago%s\n", a.MACDSignal, a.MACDSignalBarsAgo, age))
 			}
 			if a.MACDHistogram != "" {
 				sb.WriteString(fmt.Sprintf("      MACD Histogram: %s\n", a.MACDHistogram))
@@ -1190,12 +1196,16 @@ func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float6
 		}
 	}
 
-	if ind.EnableVergexSignalLabData && len(sig.VergexSignalLab) > 0 {
+	// For vergex_signal strategies the existing ctx.VergexDataMap +
+	// formatVergexData path already renders these feeds; only emit the new
+	// per-coin blocks for other sources to avoid double-rendering.
+	nonVergexSource := cfg.CoinSource.SourceType != "vergex_signal"
+	if nonVergexSource && ind.EnableVergexSignalLabData && len(sig.VergexSignalLab) > 0 {
 		sb.WriteString(fmt.Sprintf("=== %s Vergex Signal Lab ===\n", symbol))
 		sb.WriteString(vergex.FormatSignalLabMarkdown(sig.VergexSignalLab))
 		sb.WriteString("\n")
 	}
-	if ind.EnableVergexHeatmapData && len(sig.VergexHeatmap) > 0 {
+	if nonVergexSource && ind.EnableVergexHeatmapData && len(sig.VergexHeatmap) > 0 {
 		sb.WriteString(fmt.Sprintf("=== %s Vergex Liquidation Heatmap ===\n", symbol))
 		sb.WriteString(vergex.FormatHeatmapMarkdown(sig.VergexHeatmap))
 		sb.WriteString("\n")
@@ -1204,14 +1214,31 @@ func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float6
 	return sb.String()
 }
 
+// trendLine renders a "      <Label>: <value>[, changed from <change>]" line,
+// omitting the dangling ", changed from" clause when the change value is empty.
+func trendLine(label, value, change string) string {
+	if strings.TrimSpace(change) == "" {
+		return fmt.Sprintf("      %s: %s\n", label, value)
+	}
+	return fmt.Sprintf("      %s: %s, changed from %s\n", label, value, change)
+}
+
 func altfinsIntervalOrder(intervals []string) []string {
 	if len(intervals) == 0 {
 		return []string{"MINUTES15", "DAILY"}
 	}
 	order := []string{"MINUTES15", "HOURLY", "HOURS4", "HOURS12", "DAILY"}
+	// Unknown intervals get the highest rank so they sort last.
+	unknownRank := len(order)
 	rank := map[string]int{}
 	for i, iv := range order {
 		rank[iv] = i
+	}
+	rankOf := func(iv string) int {
+		if r, ok := rank[iv]; ok {
+			return r
+		}
+		return unknownRank
 	}
 	out := make([]string, 0, len(intervals))
 	seen := map[string]bool{}
@@ -1221,7 +1248,7 @@ func altfinsIntervalOrder(intervals []string) []string {
 			out = append(out, iv)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return rank[out[i]] < rank[out[j]] })
+	sort.SliceStable(out, func(i, j int) bool { return rankOf(out[i]) < rankOf(out[j]) })
 	return out
 }
 

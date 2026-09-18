@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -788,5 +789,88 @@ func TestFormatPerCoinSignalsAltFins(t *testing.T) {
 	}
 	if strings.Contains(out, "MACD Histogram: \n") || strings.Contains(out, "MACD Histogram:\n") {
 		t.Fatalf("empty histogram should be omitted:\n%s", out)
+	}
+}
+
+func TestFormatPerCoinSignalsAltFinsOmitsEmptyClauses(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.Indicators.EnableAltFinsData = true
+	cfg.Indicators.AltFinsIntervals = []string{"MINUTES15"}
+	engine := NewStrategyEngine(cfg)
+
+	engine.SetPerCoinSignals(map[string]PerCoinSignal{
+		"ZECUSDT": {
+			AltFins: map[string]*altfins.Analytics{
+				"MINUTES15": {
+					Interval:              "MINUTES15",
+					ShortTermTrend:        "Bullish (8/10)",
+					MediumTermTrend:       "Neutral (5/10)",
+					LongTermTrend:         "Bearish (3/10)",
+					ShortTermTrendChange:  "",
+					MediumTermTrendChange: "",
+					LongTermTrendChange:   "",
+					MACDSignal:            "Bullish",
+					MACDSignalBarsAgo:     2,
+					MACDSignalAgeText:     "",
+				},
+			},
+		},
+	})
+
+	out := engine.formatPerCoinSignals("ZECUSDT", 1450.38)
+	if !strings.Contains(out, "[15m] Short Term Trend: Bullish (8/10)\n") {
+		t.Fatalf("expected trend line without dangling change clause:\n%s", out)
+	}
+	if strings.Contains(out, "changed from") {
+		t.Fatalf("empty change must omit the changed-from clause:\n%s", out)
+	}
+	if !strings.Contains(out, "MACD Signal: Bullish crossover, 2 bars ago\n") {
+		t.Fatalf("expected MACD line without empty age parens:\n%s", out)
+	}
+	if strings.Contains(out, "bars ago (") {
+		t.Fatalf("empty age must omit the parens:\n%s", out)
+	}
+}
+
+func TestFormatPerCoinSignalsVergexSkippedForVergexSignalSource(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.CoinSource.SourceType = "vergex_signal"
+	cfg.Indicators.EnableVergexSignalLabData = true
+	cfg.Indicators.EnableVergexHeatmapData = true
+	engine := NewStrategyEngine(cfg)
+
+	engine.SetPerCoinSignals(map[string]PerCoinSignal{
+		"BTCUSDT": {
+			VergexSignalLab: json.RawMessage(`{"symbol":"BTC"}`),
+			VergexHeatmap:   json.RawMessage(`{"symbol":"BTC"}`),
+		},
+	})
+
+	out := engine.formatPerCoinSignals("BTCUSDT", 60000)
+	if strings.Contains(out, "Vergex Signal Lab") || strings.Contains(out, "Vergex Liquidation Heatmap") {
+		t.Fatalf("vergex per-coin blocks must not render for vergex_signal source:\n%s", out)
+	}
+}
+
+func TestFormatPerCoinSignalsVergexRenderedForOtherSource(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.CoinSource.SourceType = "ai500"
+	cfg.Indicators.EnableVergexSignalLabData = true
+	cfg.Indicators.EnableVergexHeatmapData = true
+	engine := NewStrategyEngine(cfg)
+
+	engine.SetPerCoinSignals(map[string]PerCoinSignal{
+		"BTCUSDT": {
+			VergexSignalLab: json.RawMessage(`{"symbol":"BTC"}`),
+			VergexHeatmap:   json.RawMessage(`{"symbol":"BTC"}`),
+		},
+	})
+
+	out := engine.formatPerCoinSignals("BTCUSDT", 60000)
+	if !strings.Contains(out, "=== BTCUSDT Vergex Signal Lab ===") {
+		t.Fatalf("expected vergex signal lab for non-vergex source:\n%s", out)
+	}
+	if !strings.Contains(out, "=== BTCUSDT Vergex Liquidation Heatmap ===") {
+		t.Fatalf("expected vergex heatmap for non-vergex source:\n%s", out)
 	}
 }

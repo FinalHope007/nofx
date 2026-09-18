@@ -13,7 +13,9 @@ import (
 	"nofx/provider/vergex"
 	"nofx/store"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -333,7 +335,7 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 
 	// AltFins per-coin analytics (free, keyless; read from TTL cache, fall back
 	// to a synchronous fetch on miss). Failures/no-match are skipped silently.
-	if cfg.Indicators.EnableAltFinsData {
+	if cfg.Indicators.EnableAltFinsData && engine.altfinsClient != nil && engine.altfinsDetails != nil {
 		intervals := cfg.Indicators.AltFinsIntervals
 		if len(intervals) == 0 {
 			intervals = []string{"MINUTES15", "DAILY"}
@@ -354,7 +356,7 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 					continue
 				}
 				if !resolved {
-					rid, found, err := engine.altfinsClient.ResolveIdentifier(apiCtx, sym)
+					rid, found, _, err := engine.altfinsResolveCached(apiCtx, sym)
 					if err != nil {
 						logger.Warnf("⚠️ AltFins resolve failed (%s): %v", sym, err)
 						break
@@ -382,49 +384,209 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 
 	// Vergex free per-coin detail feeds, for any non-vergex_signal source (the
 	// vergex_signal path already fetches these via FetchVergexDataBatch).
+	// Fetched concurrently (bounded like FetchVergexDataBatch) and cached in the
+	// 10-minute TTL cache so prefetch + cycle share one request per feed.
 	if cfg.CoinSource.SourceType != "vergex_signal" &&
 		(cfg.Indicators.EnableVergexSignalLabData || cfg.Indicators.EnableVergexHeatmapData) &&
-		engine.freeClient != nil {
-		// Mirror FetchVergexDataBatch's query conventions: default the market
-		// type when blank (else the API rejects the request) and normalize the
-		// chain + symbol so XYZ/stock families resolve correctly.
-		marketType := cfg.CoinSource.VergexMarketType
-		if marketType == "" {
-			marketType = vergex.DefaultMarketType
-		}
-		chain := vergex.QueryChain(cfg.CoinSource.VergexChain)
-		for sym := range symSet {
-			lookupSym := vergexDetailSymbolForLookup(marketType, sym)
-			if lookupSym == "" {
-				continue
-			}
-			q := vergex.Query{
-				MarketType: marketType,
-				Symbol:     lookupSym,
-				Chain:      chain,
-				LiqBand:    cfg.CoinSource.VergexLiqBand,
-			}
-			sig := out[sym]
-			if cfg.Indicators.EnableVergexSignalLabData {
-				if body, err := engine.freeClient.GetSignalLab(apiCtx, q); err != nil {
-					logger.Warnf("⚠️ Vergex signal-lab failed (%s): %v", sym, err)
-				} else {
-					sig.VergexSignalLab = body
-				}
-			}
-			if cfg.Indicators.EnableVergexHeatmapData {
-				if body, err := engine.freeClient.GetCostLiquidationHeatmap(apiCtx, q); err != nil {
-					logger.Warnf("⚠️ Vergex heatmap failed (%s): %v", sym, err)
-				} else {
-					sig.VergexHeatmap = body
-				}
-			}
-			out[sym] = sig
-		}
+		engine.freeClient != nil && engine.vergexDetails != nil {
+		attachVergexPerCoinSignals(apiCtx, engine, cfg, out, symSet)
 	}
 
 	engine.SetPerCoinSignals(out)
 	return nil
+}
+
+// attachVergexPerCoinSignals fetches the enabled vergex free per-coin feeds for
+// each symbol with a bounded worker pool and a TTL cache. Failures (403 /
+// Cloudflare / network) are logged and skipped; success bodies are cached.
+//
+// The symbol is passed as the RAW stripped base (e.g. "ZEC" / "ZECUSDT") with
+// the market type left advisory: vergex.FreeDetailSymbol resolves the concrete
+// market from the symbol's asset family, so a crypto symbol never gets routed
+// to the xyz/stock (hip3_perp) path.
+func attachVergexPerCoinSignals(apiCtx context.Context, engine *StrategyEngine, cfg *store.StrategyConfig, out map[string]PerCoinSignal, symSet map[string]bool) {
+	marketType := cfg.CoinSource.VergexMarketType
+	if marketType == "" {
+		marketType = vergex.DefaultMarketType
+	}
+	chain := vergex.QueryChain(cfg.CoinSource.VergexChain)
+	liqBand := cfg.CoinSource.VergexLiqBand
+
+	symbols := make([]string, 0, len(symSet))
+	for sym := range symSet {
+		symbols = append(symbols, sym)
+	}
+	sort.Strings(symbols)
+
+	type vergexFeedResult struct {
+		sym    string
+		feed   string
+		body   json.RawMessage
+		failed bool
+	}
+
+	results := make(chan vergexFeedResult, len(symbols)*2)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, vergexDetailSymbolConcurrency)
+
+	for _, sym := range symbols {
+		if vergex.QuerySymbol(sym) == "" {
+			continue
+		}
+		feeds := make([]string, 0, 2)
+		if cfg.Indicators.EnableVergexSignalLabData {
+			feeds = append(feeds, "signal-lab")
+		}
+		if cfg.Indicators.EnableVergexHeatmapData {
+			feeds = append(feeds, "heatmap")
+		}
+		for _, feed := range feeds {
+			key := sym + "|" + feed
+			if body, ok := engine.vergexDetails.get(key); ok {
+				results <- vergexFeedResult{sym: sym, feed: feed, body: body}
+				continue
+			}
+			wg.Add(1)
+			go func(sym, feed string) {
+				defer wg.Done()
+				select {
+				case sem <- struct{}{}:
+					defer func() { <-sem }()
+				case <-apiCtx.Done():
+					results <- vergexFeedResult{sym: sym, feed: feed, failed: true}
+					return
+				}
+				q := vergex.Query{
+					MarketType: marketType,
+					Symbol:     sym,
+					Chain:      chain,
+					LiqBand:    liqBand,
+				}
+				var (
+					body json.RawMessage
+					err  error
+				)
+				switch feed {
+				case "signal-lab":
+					body, err = engine.freeClient.GetSignalLab(apiCtx, q)
+				case "heatmap":
+					body, err = engine.freeClient.GetCostLiquidationHeatmap(apiCtx, q)
+				}
+				if err != nil {
+					logger.Warnf("⚠️ Vergex %s failed (%s): %v", feed, sym, err)
+					results <- vergexFeedResult{sym: sym, feed: feed, failed: true}
+					return
+				}
+				engine.vergexDetails.set(sym+"|"+feed, body)
+				results <- vergexFeedResult{sym: sym, feed: feed, body: body}
+			}(sym, feed)
+		}
+	}
+
+	wg.Wait()
+	close(results)
+
+	for r := range results {
+		if r.failed || len(r.body) == 0 {
+			continue
+		}
+		sig := out[r.sym]
+		switch r.feed {
+		case "signal-lab":
+			sig.VergexSignalLab = r.body
+		case "heatmap":
+			sig.VergexHeatmap = r.body
+		}
+		out[r.sym] = sig
+	}
+}
+
+// PrefetchVergexDetails warms the vergex per-coin detail TTL cache for the given
+// symbols, gated on the per-coin toggles, a non-vergex_signal source, and the
+// presence of the free client. Best-effort; failures are logged.
+func (e *StrategyEngine) PrefetchVergexDetails(ctx context.Context, symbols []string) {
+	if e == nil || e.vergexDetails == nil || e.freeClient == nil || e.config == nil {
+		return
+	}
+	if e.config.CoinSource.SourceType == "vergex_signal" {
+		return
+	}
+	enableSignalLab := e.config.Indicators.EnableVergexSignalLabData
+	enableHeatmap := e.config.Indicators.EnableVergexHeatmapData
+	if !enableSignalLab && !enableHeatmap {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	marketType := e.config.CoinSource.VergexMarketType
+	if marketType == "" {
+		marketType = vergex.DefaultMarketType
+	}
+	chain := vergex.QueryChain(e.config.CoinSource.VergexChain)
+	liqBand := e.config.CoinSource.VergexLiqBand
+
+	type job struct {
+		sym  string
+		feed string
+	}
+	jobs := make([]job, 0, len(symbols)*2)
+	for _, sym := range symbols {
+		if vergex.QuerySymbol(sym) == "" {
+			continue
+		}
+		if enableSignalLab {
+			if _, ok := e.vergexDetails.get(sym + "|signal-lab"); !ok {
+				jobs = append(jobs, job{sym: sym, feed: "signal-lab"})
+			}
+		}
+		if enableHeatmap {
+			if _, ok := e.vergexDetails.get(sym + "|heatmap"); !ok {
+				jobs = append(jobs, job{sym: sym, feed: "heatmap"})
+			}
+		}
+	}
+	if len(jobs) == 0 {
+		return
+	}
+
+	sem := make(chan struct{}, vergexDetailSymbolConcurrency)
+	var wg sync.WaitGroup
+	for _, j := range jobs {
+		wg.Add(1)
+		go func(j job) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				return
+			}
+			q := vergex.Query{
+				MarketType: marketType,
+				Symbol:     j.sym,
+				Chain:      chain,
+				LiqBand:    liqBand,
+			}
+			var (
+				body json.RawMessage
+				err  error
+			)
+			switch j.feed {
+			case "signal-lab":
+				body, err = e.freeClient.GetSignalLab(ctx, q)
+			case "heatmap":
+				body, err = e.freeClient.GetCostLiquidationHeatmap(ctx, q)
+			}
+			if err != nil {
+				logger.Warnf("⚠️ Vergex prefetch %s failed (%s): %v", j.feed, j.sym, err)
+				return
+			}
+			e.vergexDetails.set(j.sym+"|"+j.feed, body)
+		}(j)
+	}
+	wg.Wait()
 }
 
 func oiListsToMap(top, low []nofxos.OIPosition, symSet map[string]bool) map[string]nofxos.OIPosition {

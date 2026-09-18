@@ -134,11 +134,52 @@ func TestAttachPerCoinSignalsVergexSignalLab(t *testing.T) {
 	if !ok || len(sig.VergexSignalLab) == 0 {
 		t.Fatalf("expected Vergex signal lab, got %+v ok=%v", sig, ok)
 	}
-	if !strings.Contains(gotPath, "xyz%3AZEC/signals") {
-		t.Fatalf("expected normalized symbol path, got %q", gotPath)
+	// A crypto symbol must resolve to the core_perp family, NOT be
+	// mis-classified as an xyz/stock asset.
+	if !strings.Contains(gotPath, "/core_perp%3AZEC/signals") {
+		t.Fatalf("expected core_perp crypto path, got %q", gotPath)
+	}
+	if strings.Contains(gotPath, "xyz%3A") {
+		t.Fatalf("crypto symbol must not be routed to xyz path, got %q", gotPath)
 	}
 	if !strings.Contains(gotPath, "chain=mainnet") {
 		t.Fatalf("expected normalized chain in request, got %q", gotPath)
+	}
+}
+
+func TestAttachPerCoinSignalsVergexSignalLabXYZStock(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.RequestURI
+		w.Write([]byte(`{"signal_lab":"ok"}`))
+	}))
+	defer srv.Close()
+
+	cfg := &store.StrategyConfig{}
+	cfg.CoinSource.SourceType = "ai500"
+	cfg.Indicators.EnableVergexSignalLabData = true
+
+	engine := NewStrategyEngine(cfg)
+	fc, err := vergex.NewFreeClient(srv.URL, "", nil)
+	if err != nil {
+		t.Fatalf("NewFreeClient: %v", err)
+	}
+	engine.freeClient = fc
+
+	ctx := &Context{
+		CandidateCoins: []CandidateCoin{{Symbol: "xyz:SP500"}},
+		Ctx:            context.Background(),
+	}
+	if err := attachPerCoinSignals(ctx, engine); err != nil {
+		t.Fatalf("attachPerCoinSignals: %v", err)
+	}
+	sig, ok := engine.PerCoinSignalFor("xyz:SP500")
+	if !ok || len(sig.VergexSignalLab) == 0 {
+		t.Fatalf("expected Vergex signal lab, got %+v ok=%v", sig, ok)
+	}
+	if !strings.Contains(gotPath, "/hip3_perp%3A0x") || !strings.Contains(gotPath, "xyz%3ASP500") {
+		t.Fatalf("expected hip3_perp xyz stock path, got %q", gotPath)
 	}
 }
 

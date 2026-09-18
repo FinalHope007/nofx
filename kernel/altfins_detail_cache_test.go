@@ -22,3 +22,18 @@ func TestAltfinsDetailCacheTTL(t *testing.T) {
 		t.Fatalf("expected TTL of 10 minutes, got %v", altfinsDetailCacheTTL)
 	}
 }
+
+func TestAltfinsResolveCache(t *testing.T) {
+	c := newAltfinsResolveCache()
+	if _, ok := c.get("ZEC"); ok {
+		t.Fatal("expected empty resolve cache")
+	}
+	c.set("ZEC", 1021300)
+	got, ok := c.get("ZEC")
+	if !ok || got != 1021300 {
+		t.Fatalf("expected cached id 1021300, got %d ok=%v", got, ok)
+	}
+	if altfinsDetailCacheTTL != 10*time.Minute {
+		t.Fatalf("expected resolve TTL to match detail TTL (10m), got %v", altfinsDetailCacheTTL)
+	}
+}

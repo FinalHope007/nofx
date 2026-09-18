@@ -232,13 +232,19 @@ type StrategyEngine struct {
 	freeClient *vergex.Client
 	trending   *nofxos.FreeTrendingClient
 
+	// TTL cache for the free vergex per-coin detail feeds (non-vergex_signal
+	// sources). Keyed "<symbol>|<feed>".
+	vergexDetails *vergexDetailCache
+
 	// Binance Opportunity client (technical + sentiment scopes)
 	opportunity    binanceOpportunityGetter
 	binanceDetails *binanceDetailCache // free Binance per-coin detail TTL cache
 
-	// AltFins per-coin analytics client + TTL cache.
+	// AltFins per-coin analytics client + TTL caches (analytics values and
+	// symbol→id resolutions).
 	altfinsClient  altfinsAnalyticsGetter
 	altfinsDetails *altfinsDetailCache
+	altfinsResolve *altfinsResolveCache
 
 	recentDecisions []*store.DecisionRecord // prior-cycle assistant responses (per-trader)
 
@@ -309,6 +315,8 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 			binanceDetails:     newBinanceDetailCache(),
 			altfinsClient:      newAltfinsClient(),
 			altfinsDetails:     newAltfinsDetailCache(),
+			altfinsResolve:     newAltfinsResolveCache(),
+			vergexDetails:      newVergexDetailCache(),
 		}
 	}
 
@@ -323,6 +331,8 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 		binanceDetails:     newBinanceDetailCache(),
 		altfinsClient:      newAltfinsClient(),
 		altfinsDetails:     newAltfinsDetailCache(),
+		altfinsResolve:     newAltfinsResolveCache(),
+		vergexDetails:      newVergexDetailCache(),
 	}
 }
 
@@ -419,7 +429,13 @@ func (e *StrategyEngine) cacheAltfinsDetail(key string, v *altfins.Analytics) {
 
 // PrefetchAltFinsDetails warms the AltFins analytics TTL cache for the given
 // symbols, gated by EnableAltFinsData. Best-effort; failures are logged.
-func (e *StrategyEngine) PrefetchAltFinsDetails(ctx context.Context, symbols []string) {
+//
+// delayPerRequest, when > 0, is slept between the internal resolve/analytics
+// HTTP calls so the burst matches the scheduler's `len(intervals)+1` requests
+// per coin estimate (each spaced by delayPerRequest). Resolve results are
+// cached, so a repeat cycle whose interval entries are already cached issues
+// no resolve POST.
+func (e *StrategyEngine) PrefetchAltFinsDetails(ctx context.Context, symbols []string, delayPerRequest time.Duration) {
 	if e == nil || e.altfinsDetails == nil || e.altfinsClient == nil || e.config == nil {
 		return
 	}
@@ -434,17 +450,32 @@ func (e *StrategyEngine) PrefetchAltFinsDetails(ctx context.Context, symbols []s
 		ctx = context.Background()
 	}
 	for _, sym := range symbols {
-		id, ok, err := e.altfinsClient.ResolveIdentifier(ctx, sym)
+		// Skip resolve entirely when every interval is already cached.
+		allCached := true
+		for _, iv := range intervals {
+			if _, cached := e.altfinsDetail(sym + "|" + iv); !cached {
+				allCached = false
+				break
+			}
+		}
+		if allCached {
+			continue
+		}
+
+		id, found, cached, err := e.altfinsResolveCached(ctx, sym)
 		if err != nil {
 			logger.Warnf("⚠️ AltFins resolve failed (%s): %v", sym, err)
 			continue
 		}
-		if !ok {
+		if !found {
 			continue
+		}
+		if !cached {
+			sleepBetweenRequests(ctx, delayPerRequest)
 		}
 		for _, iv := range intervals {
 			key := sym + "|" + iv
-			if _, cached := e.altfinsDetail(key); cached {
+			if _, ok := e.altfinsDetail(key); ok {
 				continue
 			}
 			val, err := e.altfinsClient.GetAnalytics(ctx, id, iv)
@@ -453,7 +484,39 @@ func (e *StrategyEngine) PrefetchAltFinsDetails(ctx context.Context, symbols []s
 				continue
 			}
 			e.cacheAltfinsDetail(key, val)
+			sleepBetweenRequests(ctx, delayPerRequest)
 		}
+	}
+}
+
+// altfinsResolveCached is like altfinsResolveID but also reports whether the
+// resolution came from the cache (so callers can skip the inter-request delay).
+func (e *StrategyEngine) altfinsResolveCached(ctx context.Context, sym string) (id int64, found, cached bool, err error) {
+	if e.altfinsResolve != nil {
+		if id, ok := e.altfinsResolve.get(sym); ok {
+			return id, true, true, nil
+		}
+	}
+	id, found, err = e.altfinsClient.ResolveIdentifier(ctx, sym)
+	if err != nil || !found {
+		return 0, false, false, err
+	}
+	if e.altfinsResolve != nil {
+		e.altfinsResolve.set(sym, id)
+	}
+	return id, true, false, nil
+}
+
+// sleepBetweenRequests sleeps for d (or until ctx is cancelled) when d > 0.
+func sleepBetweenRequests(ctx context.Context, d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
 	}
 }
 

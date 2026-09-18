@@ -221,15 +221,19 @@ func TestGetCandidateCoinsBinanceTechnicalSoftCapAt50(t *testing.T) {
 }
 
 type fakeAltfinsClient struct {
-	ids map[string]int64
+	ids            map[string]int64
+	resolveCalls   int
+	analyticsCalls int
 }
 
 func (f *fakeAltfinsClient) ResolveIdentifier(_ context.Context, symbol string) (int64, bool, error) {
+	f.resolveCalls++
 	id, ok := f.ids[strings.ToUpper(strings.TrimSuffix(symbol, "USDT"))]
 	return id, ok, nil
 }
 
 func (f *fakeAltfinsClient) GetAnalytics(_ context.Context, _ int64, interval string) (*altfins.Analytics, error) {
+	f.analyticsCalls++
 	return &altfins.Analytics{Interval: interval, ShortTermTrend: "Bullish (8/10)"}, nil
 }
 
@@ -241,10 +245,54 @@ func TestPrefetchAltFinsDetailsPopulatesCache(t *testing.T) {
 	engine := NewStrategyEngine(cfg)
 	engine.altfinsClient = &fakeAltfinsClient{ids: map[string]int64{"ZEC": 1021300}}
 
-	engine.PrefetchAltFinsDetails(context.Background(), []string{"ZECUSDT"})
+	engine.PrefetchAltFinsDetails(context.Background(), []string{"ZECUSDT"}, 0)
 
 	got, ok := engine.altfinsDetail("ZECUSDT|MINUTES15")
 	if !ok || got == nil || got.ShortTermTrend != "Bullish (8/10)" {
 		t.Fatalf("expected cached altfins detail, got %+v ok=%v", got, ok)
+	}
+}
+
+func TestPrefetchAltFinsDetailsCachesResolution(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.Indicators.EnableAltFinsData = true
+	cfg.Indicators.AltFinsIntervals = []string{"MINUTES15", "DAILY"}
+
+	engine := NewStrategyEngine(cfg)
+	fake := &fakeAltfinsClient{ids: map[string]int64{"ZEC": 1021300}}
+	engine.altfinsClient = fake
+
+	engine.PrefetchAltFinsDetails(context.Background(), []string{"ZECUSDT"}, 0)
+	if fake.resolveCalls != 1 {
+		t.Fatalf("expected 1 resolve call on first prefetch, got %d", fake.resolveCalls)
+	}
+
+	// Second prefetch with the same symbols must not re-resolve (interval
+	// entries are already cached, so nothing is fetched at all).
+	engine.PrefetchAltFinsDetails(context.Background(), []string{"ZECUSDT"}, 0)
+	if fake.resolveCalls != 1 {
+		t.Fatalf("expected resolve to be cached (still 1 call), got %d", fake.resolveCalls)
+	}
+}
+
+func TestPrefetchAltFinsDetailsResolveCacheUsedWhenAnalyticsExpires(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.Indicators.EnableAltFinsData = true
+	cfg.Indicators.AltFinsIntervals = []string{"MINUTES15"}
+
+	engine := NewStrategyEngine(cfg)
+	fake := &fakeAltfinsClient{ids: map[string]int64{"ZEC": 1021300}}
+	engine.altfinsClient = fake
+
+	engine.PrefetchAltFinsDetails(context.Background(), []string{"ZECUSDT"}, 0)
+	// Simulate the analytics detail cache entry being gone while the resolve
+	// cache is still warm: only the analytics call should repeat.
+	engine.altfinsDetails = newAltfinsDetailCache()
+	engine.PrefetchAltFinsDetails(context.Background(), []string{"ZECUSDT"}, 0)
+	if fake.resolveCalls != 1 {
+		t.Fatalf("expected no second resolve (cached id), got %d", fake.resolveCalls)
+	}
+	if fake.analyticsCalls != 2 {
+		t.Fatalf("expected analytics to be re-fetched, got %d calls", fake.analyticsCalls)
 	}
 }

@@ -42,3 +42,42 @@ func (c *altfinsDetailCache) set(key string, v *altfins.Analytics) {
 	defer c.mu.Unlock()
 	c.data[key] = altfinsDetailEntry{value: v, expires: time.Now().Add(altfinsDetailCacheTTL)}
 }
+
+type altfinsResolveEntry struct {
+	id      int64
+	expires time.Time
+}
+
+// altfinsResolveCache is a concurrency-safe TTL cache for AltFins
+// symbol→securityIdentifierId resolutions, so repeat cycles only issue the
+// analytics call. Negative results (no match) are not cached.
+type altfinsResolveCache struct {
+	mu   sync.Mutex
+	data map[string]altfinsResolveEntry
+}
+
+func newAltfinsResolveCache() *altfinsResolveCache {
+	return &altfinsResolveCache{data: make(map[string]altfinsResolveEntry)}
+}
+
+func (c *altfinsResolveCache) get(symbol string) (int64, bool) {
+	if c == nil {
+		return 0, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.data[symbol]
+	if !ok || time.Now().After(e.expires) {
+		return 0, false
+	}
+	return e.id, true
+}
+
+func (c *altfinsResolveCache) set(symbol string, id int64) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data[symbol] = altfinsResolveEntry{id: id, expires: time.Now().Add(altfinsDetailCacheTTL)}
+}
