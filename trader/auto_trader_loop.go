@@ -503,6 +503,7 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 
 	for _, pos := range positions {
 		symbol := pos["symbol"].(string)
+		dbSymbol := market.Normalize(symbol)
 		side := pos["side"].(string)
 		entryPrice := pos["entryPrice"].(float64)
 		markPrice := pos["markPrice"].(float64)
@@ -531,15 +532,15 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		pnlPct := calculatePnLPercentage(unrealizedPnl, marginUsed)
 
 		// Get position open time from exchange (preferred) or fallback to local tracking
-		posKey := symbol + "_" + side
+		posKey := dbSymbol + "_" + side
 		currentPositionKeys[posKey] = true
 
 		var updateTime int64
 		var sl, tp float64
 		// Priority 1: Get from database (trader_positions table) - most accurate
 		if at.store != nil {
-			if dbPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, symbol, side); err == nil && dbPos != nil {
-				at.reconcilePendingSLTP(dbPos, symbol, side)
+			if dbPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, dbSymbol, side); err == nil && dbPos != nil {
+				at.reconcilePendingSLTP(dbPos, dbSymbol, side)
 				if dbPos.EntryTime > 0 {
 					updateTime = dbPos.EntryTime
 				}

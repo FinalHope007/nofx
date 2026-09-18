@@ -3,6 +3,7 @@ package trader
 import (
 	"testing"
 
+	"nofx/market"
 	"nofx/store"
 
 	"gorm.io/driver/sqlite"
@@ -61,6 +62,35 @@ func TestReconcilePendingSLTP(t *testing.T) {
 	}
 	if _, ok := at.pendingSLTP["BRUSDT_long"]; ok {
 		t.Fatalf("pending entry was not removed")
+	}
+}
+
+// TestPendingSLTPKeyMatchesPositionLoopKey verifies that the key used by the
+// position loop (normalized DB symbol) agrees with the key written by the
+// open path via recordPendingSLTP, so pending SL/TP is not discarded before
+// OrderSync can apply it.
+func TestPendingSLTPKeyMatchesPositionLoopKey(t *testing.T) {
+	at := &AutoTrader{
+		pendingSLTP: make(map[string]pendingSLTP),
+	}
+
+	rawSymbol := "BTC_USDT"
+	side := "long"
+
+	at.recordPendingSLTP(market.Normalize(rawSymbol), side, 0.5, 0.8)
+
+	dbSymbol := market.Normalize(rawSymbol)
+	posKey := dbSymbol + "_" + side
+
+	at.pendingSLTPMutex.Lock()
+	_, ok := at.pendingSLTP[posKey]
+	at.pendingSLTPMutex.Unlock()
+	if !ok {
+		t.Fatalf("posKey %q did not match pending key %q (cleanup would delete it)", posKey, market.Normalize(rawSymbol)+"_"+side)
+	}
+
+	if posKey == rawSymbol+"_"+side {
+		t.Fatalf("expected normalized key to differ from raw key")
 	}
 }
 
