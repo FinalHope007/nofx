@@ -1044,13 +1044,13 @@ type IndicatorConfig struct {
 	EnableOI          bool `json:"enable_oi"`           // open interest
 	EnableFundingRate bool `json:"enable_funding_rate"` // funding rate
 	// EMA period configuration
-	EMAPeriods []int `json:"ema_periods,omitempty"` // default [20, 50]
+	EMAPeriods []int `json:"ema_periods"` // default [20, 50]
 	// RSI period configuration
-	RSIPeriods []int `json:"rsi_periods,omitempty"` // default [7, 14]
+	RSIPeriods []int `json:"rsi_periods"` // default [7, 14]
 	// ATR period configuration
-	ATRPeriods []int `json:"atr_periods,omitempty"` // default [14]
+	ATRPeriods []int `json:"atr_periods"` // default [14]
 	// BOLL period configuration (period, standard deviation multiplier is fixed at 2)
-	BOLLPeriods []int `json:"boll_periods,omitempty"` // default [20] - can select multiple timeframes
+	BOLLPeriods []int `json:"boll_periods"` // default [20] - can select multiple timeframes
 	// external data sources
 	ExternalDataSources []ExternalDataSource `json:"external_data_sources,omitempty"`
 
