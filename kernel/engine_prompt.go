@@ -980,10 +980,49 @@ func (e *StrategyEngine) formatPositionInfo(index int, pos PositionInfo, ctx *Co
 		positionValue = -positionValue
 	}
 
-	sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %s Current %s | Qty %.4f | Position Value %.2f USDT | PnL%+.2f%% | PnL Amount%+.2f USDT | Peak PnL%.2f%% | Leverage %dx | Margin %.0f | Liq Price %s%s\n\n",
+	slStr, tpStr := "none", "none"
+	if pos.StopLoss > 0 {
+		slStr = market.FormatPriceSigFigs(pos.StopLoss)
+	}
+	if pos.TakeProfit > 0 {
+		tpStr = market.FormatPriceSigFigs(pos.TakeProfit)
+	}
+	slTp := fmt.Sprintf(" | SL %s TP %s", slStr, tpStr)
+	if pos.EntryPrice > 0 {
+		if pos.StopLoss > 0 {
+			if strings.EqualFold(pos.Side, "short") {
+				slTp += fmt.Sprintf(" | SL Dist %+.2f%%", (pos.EntryPrice-pos.StopLoss)/pos.EntryPrice*100)
+			} else {
+				slTp += fmt.Sprintf(" | SL Dist %+.2f%%", (pos.StopLoss-pos.EntryPrice)/pos.EntryPrice*100)
+			}
+		}
+		if pos.TakeProfit > 0 {
+			if strings.EqualFold(pos.Side, "short") {
+				slTp += fmt.Sprintf(" TP Dist %+.2f%%", (pos.EntryPrice-pos.TakeProfit)/pos.EntryPrice*100)
+			} else {
+				slTp += fmt.Sprintf(" TP Dist %+.2f%%", (pos.TakeProfit-pos.EntryPrice)/pos.EntryPrice*100)
+			}
+		}
+	}
+
+	openedHold := ""
+	if pos.EntryTime > 0 {
+		openedHold = " | Opened " + time.Unix(pos.EntryTime/1000, 0).UTC().Format("01-02 15:04 UTC")
+	}
+	if holdingDuration != "" {
+		duration := strings.TrimPrefix(holdingDuration, " | ")
+		duration = strings.TrimPrefix(duration, "Holding Duration ")
+		if openedHold == "" {
+			openedHold = fmt.Sprintf(" | Opened n/a (Holding %s)", duration)
+		} else {
+			openedHold += fmt.Sprintf(" (Holding %s)", duration)
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %s Current %s | Qty %.4f | Position Value %.2f USDT | PnL%+.2f%% | PnL Amount%+.2f USDT | Peak PnL%.2f%% | Leverage %dx | Margin %.0f | Liq Price %s%s%s\n\n",
 		index, pos.Symbol, strings.ToUpper(pos.Side),
 		market.FormatPriceSigFigs(pos.EntryPrice), market.FormatPriceSigFigs(pos.MarkPrice), pos.Quantity, positionValue, pos.UnrealizedPnLPct, pos.UnrealizedPnL, pos.PeakPnLPct,
-		pos.Leverage, pos.MarginUsed, market.FormatPriceSigFigs(pos.LiquidationPrice), holdingDuration))
+		pos.Leverage, pos.MarginUsed, market.FormatPriceSigFigs(pos.LiquidationPrice), slTp, openedHold))
 
 	if marketData, ok := ctx.MarketDataMap[pos.Symbol]; ok {
 		sb.WriteString(e.formatMarketData(marketData))

@@ -282,6 +282,48 @@ func TestFormatPerCoinSignals_negativeOIDeltaRendersDecrease(t *testing.T) {
 	}
 }
 
+func TestFormatPositionInfoRendersSLTPAndOpened(t *testing.T) {
+	e := NewStrategyEngine(&store.StrategyConfig{})
+	ctx := &Context{}
+	pos := PositionInfo{
+		Symbol: "HBARUSDT", Side: "long", EntryPrice: 0.0752, MarkPrice: 0.0752,
+		Quantity: 160, Leverage: 5, MarginUsed: 2, LiquidationPrice: 0.0608,
+		UnrealizedPnLPct: -0.42, UnrealizedPnL: -0.01, PeakPnLPct: 0.52,
+		EntryTime: 1758112993000, StopLoss: 0.0714, TakeProfit: 0.0827,
+		UpdateTime: time.Now().Add(-13 * time.Minute).UnixMilli(),
+	}
+	out := e.formatPositionInfo(1, pos, ctx)
+	for _, want := range []string{"SL 0.0714", "TP 0.0827", "Opened", "SL Dist", "TP Dist", "(Holding"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	t.Logf("rendered: %s", strings.SplitN(out, "\n", 2)[0])
+}
+
+func TestFormatPositionInfoSLTPNoneFallback(t *testing.T) {
+	e := NewStrategyEngine(&store.StrategyConfig{})
+	ctx := &Context{}
+	pos := PositionInfo{
+		Symbol: "HBARUSDT", Side: "long", EntryPrice: 0.0752, MarkPrice: 0.0752,
+		Quantity: 160, Leverage: 5, MarginUsed: 2, LiquidationPrice: 0.0608,
+		UnrealizedPnLPct: -0.42, UnrealizedPnL: -0.01, PeakPnLPct: 0.52,
+		StopLoss: 0, TakeProfit: 0, EntryTime: 0,
+	}
+	out := e.formatPositionInfo(1, pos, ctx)
+	for _, want := range []string{"SL none", "TP none"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"SL Dist", "TP Dist"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("unexpected %q in:\n%s", unwanted, out)
+		}
+	}
+	t.Logf("rendered: %s", strings.SplitN(out, "\n", 2)[0])
+}
+
 func containsCJK(text string) bool {
 	for _, r := range text {
 		if r >= 0x4E00 && r <= 0x9FFF {
