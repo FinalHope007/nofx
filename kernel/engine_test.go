@@ -3,8 +3,10 @@ package kernel
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
+	"nofx/provider/altfins"
 	"nofx/provider/binance"
 	"nofx/store"
 )
@@ -83,7 +85,7 @@ func TestAttachPerCoinSignalsBinanceSentiment(t *testing.T) {
 	// Pre-populate cache with fake sentiment detail for BTCUSDT
 	engine.cacheBinanceDetail("sentiment|BTCUSDT", &binance.BinanceAssetDetail{
 		Metrics: map[string]binance.BinanceMetric{
-			"sentiment_score":  {Value: "10.00", ValueLabel: "Positive"},
+			"sentiment_score":   {Value: "10.00", ValueLabel: "Positive"},
 			"sentiment_summary": {ValueLabel: "In the past 24h BTC was bullish."},
 		},
 	})
@@ -123,7 +125,7 @@ func TestAttachPerCoinSignalsBinanceTechnical(t *testing.T) {
 	// Pre-populate cache with fake technical detail for BTCUSDT
 	engine.cacheBinanceDetail("technical|BTCUSDT|1h", &binance.BinanceAssetDetail{
 		Metrics: map[string]binance.BinanceMetric{
-			"technical_score_1h":  {Value: "8.73", ValueLabel: "Positive"},
+			"technical_score_1h":   {Value: "8.73", ValueLabel: "Positive"},
 			"technical_summary_1h": {ValueLabel: "Bullish overall for BTC."},
 		},
 	})
@@ -215,5 +217,34 @@ func TestGetCandidateCoinsBinanceTechnicalSoftCapAt50(t *testing.T) {
 	}
 	if len(coins) != 50 {
 		t.Fatalf("expected 50 coins (soft cap), got %d", len(coins))
+	}
+}
+
+type fakeAltfinsClient struct {
+	ids map[string]int64
+}
+
+func (f *fakeAltfinsClient) ResolveIdentifier(_ context.Context, symbol string) (int64, bool, error) {
+	id, ok := f.ids[strings.ToUpper(strings.TrimSuffix(symbol, "USDT"))]
+	return id, ok, nil
+}
+
+func (f *fakeAltfinsClient) GetAnalytics(_ context.Context, _ int64, interval string) (*altfins.Analytics, error) {
+	return &altfins.Analytics{Interval: interval, ShortTermTrend: "Bullish (8/10)"}, nil
+}
+
+func TestPrefetchAltFinsDetailsPopulatesCache(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.Indicators.EnableAltFinsData = true
+	cfg.Indicators.AltFinsIntervals = []string{"MINUTES15"}
+
+	engine := NewStrategyEngine(cfg)
+	engine.altfinsClient = &fakeAltfinsClient{ids: map[string]int64{"ZEC": 1021300}}
+
+	engine.PrefetchAltFinsDetails(context.Background(), []string{"ZECUSDT"})
+
+	got, ok := engine.altfinsDetail("ZECUSDT|MINUTES15")
+	if !ok || got == nil || got.ShortTermTrend != "Bullish (8/10)" {
+		t.Fatalf("expected cached altfins detail, got %+v ok=%v", got, ok)
 	}
 }

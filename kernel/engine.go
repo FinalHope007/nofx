@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"nofx/logger"
 	"nofx/market"
+	"nofx/provider/altfins"
 	"nofx/provider/binance"
 	"nofx/provider/hyperliquid"
 	"nofx/provider/nofxos"
@@ -199,6 +200,9 @@ type PerCoinSignal struct {
 	Price            map[string]map[string]nofxos.PriceRankingItem
 	BinanceTechnical map[string]*binance.BinanceAssetDetail // interval -> parsed detail (may be nil)
 	BinanceSentiment map[string]string                      // flattened sentiment detail labels (may be nil)
+	AltFins          map[string]*altfins.Analytics          // interval -> parsed analytics
+	VergexSignalLab  json.RawMessage                        // vergex.trade SignalLab (non-vergex sources)
+	VergexHeatmap    json.RawMessage                        // vergex.trade liquidation heatmap
 }
 
 // binanceOpportunityGetter abstracts the Binance Opportunity client for
@@ -207,6 +211,14 @@ type binanceOpportunityGetter interface {
 	GetOpportunityAssets(ctx context.Context, interval, scene string) ([]binance.OpportunityAsset, error)
 	GetAssetDetails(ctx context.Context, symbol, scene, interval string) (*binance.BinanceAssetDetail, error)
 }
+
+// altfinsAnalyticsGetter abstracts the AltFins client for testability.
+type altfinsAnalyticsGetter interface {
+	ResolveIdentifier(ctx context.Context, symbol string) (int64, bool, error)
+	GetAnalytics(ctx context.Context, id int64, interval string) (*altfins.Analytics, error)
+}
+
+var newAltfinsClient = func() *altfins.AnalyticsClient { return altfins.NewAnalyticsClient() }
 
 // StrategyEngine strategy execution engine
 type StrategyEngine struct {
@@ -223,6 +235,10 @@ type StrategyEngine struct {
 	// Binance Opportunity client (technical + sentiment scopes)
 	opportunity    binanceOpportunityGetter
 	binanceDetails *binanceDetailCache // free Binance per-coin detail TTL cache
+
+	// AltFins per-coin analytics client + TTL cache.
+	altfinsClient  altfinsAnalyticsGetter
+	altfinsDetails *altfinsDetailCache
 
 	recentDecisions []*store.DecisionRecord // prior-cycle assistant responses (per-trader)
 
@@ -291,6 +307,8 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 			trending:           trendingClient,
 			opportunity:        opportunityClient,
 			binanceDetails:     newBinanceDetailCache(),
+			altfinsClient:      newAltfinsClient(),
+			altfinsDetails:     newAltfinsDetailCache(),
 		}
 	}
 
@@ -303,6 +321,8 @@ func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string)
 		trending:           trendingClient,
 		opportunity:        opportunityClient,
 		binanceDetails:     newBinanceDetailCache(),
+		altfinsClient:      newAltfinsClient(),
+		altfinsDetails:     newAltfinsDetailCache(),
 	}
 }
 
@@ -387,6 +407,54 @@ func (e *StrategyEngine) binanceDetail(key string) (*binance.BinanceAssetDetail,
 
 func (e *StrategyEngine) cacheBinanceDetail(key string, v *binance.BinanceAssetDetail) {
 	e.binanceDetails.set(key, v)
+}
+
+func (e *StrategyEngine) altfinsDetail(key string) (*altfins.Analytics, bool) {
+	return e.altfinsDetails.get(key)
+}
+
+func (e *StrategyEngine) cacheAltfinsDetail(key string, v *altfins.Analytics) {
+	e.altfinsDetails.set(key, v)
+}
+
+// PrefetchAltFinsDetails warms the AltFins analytics TTL cache for the given
+// symbols, gated by EnableAltFinsData. Best-effort; failures are logged.
+func (e *StrategyEngine) PrefetchAltFinsDetails(ctx context.Context, symbols []string) {
+	if e == nil || e.altfinsDetails == nil || e.altfinsClient == nil || e.config == nil {
+		return
+	}
+	if !e.config.Indicators.EnableAltFinsData {
+		return
+	}
+	intervals := e.config.Indicators.AltFinsIntervals
+	if len(intervals) == 0 {
+		intervals = []string{"MINUTES15", "DAILY"}
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for _, sym := range symbols {
+		id, ok, err := e.altfinsClient.ResolveIdentifier(ctx, sym)
+		if err != nil {
+			logger.Warnf("⚠️ AltFins resolve failed (%s): %v", sym, err)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		for _, iv := range intervals {
+			key := sym + "|" + iv
+			if _, cached := e.altfinsDetail(key); cached {
+				continue
+			}
+			val, err := e.altfinsClient.GetAnalytics(ctx, id, iv)
+			if err != nil {
+				logger.Warnf("⚠️ AltFins analytics failed (%s %s): %v", sym, iv, err)
+				continue
+			}
+			e.cacheAltfinsDetail(key, val)
+		}
+	}
 }
 
 // PrefetchBinanceDetails populates the binance detail cache for the given symbols,
