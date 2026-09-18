@@ -810,13 +810,14 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 		for _, o := range ctx.RecentOrders {
 			counts[o.CloseReason]++
 		}
-		sb.WriteString(fmt.Sprintf("Recent closes: %d TP, %d SL, %d LLM decisions\n\n", counts["tp"], counts["sl"], counts["llm"]))
+		sb.WriteString(fmt.Sprintf("Recent closes: %d TP, %d SL, %d trailing-SL (profit locked), %d LLM decisions, %d manual, %d unknown\n\n",
+			counts["tp"], counts["sl"], counts["trailing_sl"], counts["llm"], counts["manual"], counts["exchange"]))
 		for i, order := range ctx.RecentOrders {
 			resultStr := "Profit"
 			if order.RealizedPnL < 0 {
 				resultStr = "Loss"
 			}
-			tag := map[string]string{"llm": "[LLM close]", "tp": "[TP hit]", "sl": "[SL hit]", "exchange": "[exchange]"}[order.CloseReason]
+			tag := closeReasonTag(order.CloseReason)
 			sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %s Exit %s | %s: %+.2f USDT (%+.2f%%) | %s→%s (%s) %s\n",
 				i+1, order.Symbol, order.Side,
 				market.FormatPriceSigFigs(order.EntryPrice), market.FormatPriceSigFigs(order.ExitPrice),
@@ -1501,6 +1502,24 @@ func (e *StrategyEngine) formatVergexData(data *vergex.MarketAnalysis, omitUnava
 // ============================================================================
 // Market Data Formatting
 // ============================================================================
+
+// closeReasonTag maps a close reason to its compact prompt tag.
+func closeReasonTag(reason string) string {
+	switch reason {
+	case "llm":
+		return "[LLM close]"
+	case "tp":
+		return "[TP hit]"
+	case "sl":
+		return "[SL hit]"
+	case "trailing_sl":
+		return "[Trailing SL - profit locked]"
+	case "manual":
+		return "[Manual close]"
+	default:
+		return "[exchange]"
+	}
+}
 
 func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 	var sb strings.Builder

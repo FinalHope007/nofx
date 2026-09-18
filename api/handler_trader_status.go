@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"nofx/logger"
+	"nofx/market"
 	"nofx/store"
 	"nofx/trader"
 	"nofx/trader/aster"
@@ -266,6 +267,12 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 	}
 
 	logger.Infof("✅ Position closed successfully: symbol=%s, side=%s, qty=%.6f, result=%v", req.Symbol, req.Side, posQty, result)
+
+	// Mark the close as manual so the synced position is labeled as such rather
+	// than being inferred from price/PnL.
+	if s.store != nil {
+		s.store.Position().MarkManualClose(traderID, market.Normalize(req.Symbol), strings.ToLower(req.Side))
+	}
 
 	// Backfill the just-closed fill immediately. Manual closes may happen while
 	// the bot runtime is stopped, so the background OrderSync loop is not enough.

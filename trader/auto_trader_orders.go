@@ -6,6 +6,7 @@ import (
 	"nofx/logger"
 	"nofx/market"
 	"nofx/store"
+	"strings"
 	"time"
 )
 
@@ -35,11 +36,92 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actio
 	case "close_short":
 		return at.executeCloseShortWithRecord(decision, actionRecord)
 	case "hold", "wait":
-		// No execution needed, just record
-		return nil
+		return at.applyTrailingSLTP(decision, actionRecord)
 	default:
 		return fmt.Errorf("unknown action: %s", decision.Action)
 	}
+}
+
+// applyTrailingSLTP applies stop-loss / take-profit updates the LLM attaches to
+// a hold (or wait) decision for an existing position. Only the recorded open
+// position for the symbol is touched, and the stop is only ever tightened in
+// the favorable direction so a hold can lock in profit but never widen risk.
+func (at *AutoTrader) applyTrailingSLTP(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
+	if at.store == nil {
+		return nil
+	}
+	if decision.StopLoss <= 0 && decision.TakeProfit <= 0 {
+		return nil
+	}
+
+	symbol := market.Normalize(decision.Symbol)
+	var openPos *store.TraderPosition
+	for _, side := range []string{"long", "short"} {
+		pos, err := at.store.Position().GetOpenPositionBySymbol(at.id, symbol, side)
+		if err == nil && pos != nil {
+			openPos = pos
+			break
+		}
+	}
+	if openPos == nil {
+		return nil
+	}
+
+	side := strings.ToLower(openPos.Side)
+	positionSide := strings.ToUpper(side)
+
+	newSL := openPos.StopLoss
+	if decision.StopLoss > 0 && isStopTightening(side, decision.StopLoss, openPos.StopLoss) {
+		newSL = decision.StopLoss
+	}
+	newTP := openPos.TakeProfit
+	if decision.TakeProfit > 0 && decision.TakeProfit != openPos.TakeProfit {
+		newTP = decision.TakeProfit
+	}
+	if newSL == openPos.StopLoss && newTP == openPos.TakeProfit {
+		return nil
+	}
+
+	exchangeSymbol := ExchangeSymbol(decision.Symbol, at.exchange)
+	quantity := openPos.Quantity
+	if quantity <= 0 {
+		quantity = openPos.EntryQuantity
+	}
+
+	if newSL != openPos.StopLoss {
+		if err := at.trader.SetStopLoss(exchangeSymbol, positionSide, quantity, newSL); err != nil {
+			logger.Infof("  ⚠ Failed to update trailing stop loss: %v", err)
+			newSL = openPos.StopLoss
+		}
+	}
+	if newTP != openPos.TakeProfit {
+		if err := at.trader.SetTakeProfit(exchangeSymbol, positionSide, quantity, newTP); err != nil {
+			logger.Infof("  ⚠ Failed to update trailing take profit: %v", err)
+			newTP = openPos.TakeProfit
+		}
+	}
+	if newSL == openPos.StopLoss && newTP == openPos.TakeProfit {
+		return nil
+	}
+	if err := at.store.Position().UpdatePositionSLTP(openPos.ID, newSL, newTP); err != nil {
+		logger.Infof("  ⚠ Failed to persist trailing SL/TP: %v", err)
+	}
+	actionRecord.StopLoss = newSL
+	actionRecord.TakeProfit = newTP
+	logger.Infof("  📐 Trailing SL/TP updated for %s %s: SL %.6f TP %.6f", symbol, side, newSL, newTP)
+	return nil
+}
+
+// isStopTightening reports whether moving the stop from current to next reduces
+// risk for the given side. A zero current stop is always replaced.
+func isStopTightening(side string, next, current float64) bool {
+	if current <= 0 {
+		return true
+	}
+	if side == "short" {
+		return next < current
+	}
+	return next > current
 }
 
 // executeOpenLongWithRecord executes open long position and records detailed information

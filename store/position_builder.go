@@ -162,6 +162,11 @@ func (pb *PositionBuilder) handleClose(
 		logger.Infof("  ✅ Full close: %s %s %.6f @ %.2f (avg exit: %.2f, entry: %.2f, PnL: %.2f)",
 			symbol, side, closeQty, price, finalExitPrice, position.EntryPrice, totalPnL)
 
+		closeReason := "sync"
+		if pb.positionStore.consumeManualClose(traderID, symbol, side) {
+			closeReason = "manual"
+		}
+
 		return pb.positionStore.ClosePositionFully(
 			position.ID,
 			finalExitPrice,
@@ -169,7 +174,7 @@ func (pb *PositionBuilder) handleClose(
 			tradeTimeMs,
 			totalPnL,
 			totalFee,
-			"sync",
+			closeReason,
 		)
 	}
 }

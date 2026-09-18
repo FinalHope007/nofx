@@ -259,21 +259,41 @@ func (s *Store) GetRecentTradesWithReason(traderID string, limit int) ([]RecentT
 
 func classifyClose(pos TraderPosition, successfulLLMCloses map[string][]int64, tol float64) string {
 	side := strings.ToLower(pos.Side)
+
+	// An explicit manual marker recorded at close time wins: the user pressed
+	// the UI close button, so it is neither an LLM nor an exchange TP/SL exit.
+	if strings.EqualFold(pos.CloseReason, "manual") {
+		return "manual"
+	}
+
 	symbol := market.Normalize(pos.Symbol)
 	for _, et := range successfulLLMCloses[symbol+"|"+side] {
 		if abs64(et-pos.ExitTime) <= 15*60*1000 {
 			return "llm"
 		}
 	}
+
 	exit := pos.ExitPrice
+
+	// Stop-loss exits. When the stop sits beyond entry (a trailing stop that has
+	// locked in profit), label it separately: it is a favorable outcome, not a
+	// failed loss stop.
 	if pos.StopLoss > 0 {
-		if side == "long" && exit <= pos.StopLoss*(1+tol) {
-			return "sl"
-		}
-		if side == "short" && exit >= pos.StopLoss*(1-tol) {
+		hitSL := (side == "long" && exit <= pos.StopLoss*(1+tol)) ||
+			(side == "short" && exit >= pos.StopLoss*(1-tol))
+		if hitSL {
+			if pos.EntryPrice > 0 {
+				if side == "long" && pos.StopLoss > pos.EntryPrice {
+					return "trailing_sl"
+				}
+				if side == "short" && pos.StopLoss < pos.EntryPrice {
+					return "trailing_sl"
+				}
+			}
 			return "sl"
 		}
 	}
+
 	if pos.TakeProfit > 0 {
 		if side == "long" && exit >= pos.TakeProfit*(1-tol) {
 			return "tp"
@@ -282,6 +302,13 @@ func classifyClose(pos TraderPosition, successfulLLMCloses map[string][]int64, t
 			return "tp"
 		}
 	}
+
+	// Neither level matched. Without recorded levels we cannot tell an exchange
+	// trigger from any other close, so do not guess from PnL sign.
+	if pos.StopLoss == 0 && pos.TakeProfit == 0 {
+		return "exchange"
+	}
+
 	if pos.RealizedPnL < 0 {
 		return "sl"
 	}

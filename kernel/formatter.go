@@ -201,7 +201,8 @@ func formatRecentTradesZH(orders []RecentOrder) string {
 	for _, o := range orders {
 		counts[o.CloseReason]++
 	}
-	sb.WriteString(fmt.Sprintf("Recent closes: %d TP, %d SL, %d LLM decisions\n\n", counts["tp"], counts["sl"], counts["llm"]))
+	sb.WriteString(fmt.Sprintf("Recent closes: %d TP, %d SL, %d trailing-SL (profit locked), %d LLM decisions, %d manual, %d unknown\n\n",
+		counts["tp"], counts["sl"], counts["trailing_sl"], counts["llm"], counts["manual"], counts["exchange"]))
 
 	for i, order := range orders {
 		// Determine profit or loss
@@ -209,7 +210,7 @@ func formatRecentTradesZH(orders []RecentOrder) string {
 		if order.RealizedPnL < 0 {
 			profitOrLoss = "Loss"
 		}
-		tag := map[string]string{"llm": "[LLM close]", "tp": "[TP hit]", "sl": "[SL hit]", "exchange": "[exchange]"}[order.CloseReason]
+		tag := closeReasonTag(order.CloseReason)
 
 		sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %.4f Exit %.4f | %s: %+.2f USDT (%+.2f%%) | %s → %s (%s) %s\n",
 			i+1,
@@ -477,14 +478,15 @@ func formatRecentTradesEN(orders []RecentOrder) string {
 	for _, o := range orders {
 		counts[o.CloseReason]++
 	}
-	sb.WriteString(fmt.Sprintf("Recent closes: %d TP, %d SL, %d LLM decisions\n\n", counts["tp"], counts["sl"], counts["llm"]))
+	sb.WriteString(fmt.Sprintf("Recent closes: %d TP, %d SL, %d trailing-SL (profit locked), %d LLM decisions, %d manual, %d unknown\n\n",
+		counts["tp"], counts["sl"], counts["trailing_sl"], counts["llm"], counts["manual"], counts["exchange"]))
 
 	for i, order := range orders {
 		profitOrLoss := "Profit"
 		if order.RealizedPnL < 0 {
 			profitOrLoss = "Loss"
 		}
-		tag := map[string]string{"llm": "[LLM close]", "tp": "[TP hit]", "sl": "[SL hit]", "exchange": "[exchange]"}[order.CloseReason]
+		tag := closeReasonTag(order.CloseReason)
 
 		sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %.4f Exit %.4f | %s: %+.2f USDT (%+.2f%%) | %s → %s (%s) %s\n",
 			i+1,

@@ -45,19 +45,44 @@ func TestClassifyClose(t *testing.T) {
 			want: "tp",
 		},
 		{
-			name: "no sltp positive pnl",
+			name: "no sltp positive pnl labeled exchange",
 			pos:  TraderPosition{Symbol: "BRUSDT", Side: "LONG", ExitPrice: 0.63, ExitTime: baseExit, RealizedPnL: 1.0},
-			want: "tp",
+			want: "exchange",
 		},
 		{
-			name: "no sltp negative pnl",
+			name: "no sltp negative pnl labeled exchange",
 			pos:  TraderPosition{Symbol: "BRUSDT", Side: "LONG", ExitPrice: 0.59, ExitTime: baseExit, RealizedPnL: -1.0},
-			want: "sl",
+			want: "exchange",
 		},
 		{
 			name: "no sltp zero pnl",
 			pos:  TraderPosition{Symbol: "BRUSDT", Side: "LONG", ExitPrice: 0.60, ExitTime: baseExit, RealizedPnL: 0},
 			want: "exchange",
+		},
+		{
+			name: "manual close marker wins over price rules",
+			pos:  TraderPosition{Symbol: "BRUSDT", Side: "LONG", ExitPrice: 0.59, ExitTime: baseExit, StopLoss: 0.50, TakeProfit: 0.80, RealizedPnL: -1.0, CloseReason: "manual"},
+			want: "manual",
+		},
+		{
+			name: "long trailing stop above entry locks profit",
+			pos:  TraderPosition{Symbol: "BRUSDT", Side: "LONG", EntryPrice: 0.83129, ExitPrice: 0.86763, ExitTime: baseExit, StopLoss: 0.873, TakeProfit: 0.9178, RealizedPnL: 0.5},
+			want: "trailing_sl",
+		},
+		{
+			name: "long trailing stop below entry is a plain sl",
+			pos:  TraderPosition{Symbol: "BRUSDT", Side: "LONG", EntryPrice: 0.80, ExitPrice: 0.7499, ExitTime: baseExit, StopLoss: 0.75, TakeProfit: 0.95, RealizedPnL: -1.0},
+			want: "sl",
+		},
+		{
+			name: "short trailing stop below entry locks profit",
+			pos:  TraderPosition{Symbol: "BRUSDT", Side: "SHORT", EntryPrice: 0.80, ExitPrice: 0.7001, ExitTime: baseExit, StopLoss: 0.70, TakeProfit: 0.50, RealizedPnL: 0.5},
+			want: "trailing_sl",
+		},
+		{
+			name: "short trailing stop above entry is a plain sl",
+			pos:  TraderPosition{Symbol: "BRUSDT", Side: "SHORT", EntryPrice: 0.70, ExitPrice: 0.8501, ExitTime: baseExit, StopLoss: 0.85, TakeProfit: 0.50, RealizedPnL: -1.0},
+			want: "sl",
 		},
 		{
 			name: "short exit at stop loss",
@@ -251,5 +276,59 @@ func TestGetRecordsInRange(t *testing.T) {
 	}
 	if len(out) != 0 {
 		t.Fatalf("out-of-range records=%d want 0", len(out))
+	}
+}
+
+func TestManualCloseMarkerLabelsSyncedClose(t *testing.T) {
+	st := newClassifyTestStore(t)
+	now := time.Now().UTC()
+	pos := &TraderPosition{
+		TraderID: "t1", Symbol: "BRUSDT", Side: "LONG",
+		Quantity: 10, EntryPrice: 0.67, Leverage: 5,
+		EntryTime: now.Add(-10 * time.Minute).UnixMilli(), Status: "OPEN",
+		StopLoss: 0.60, TakeProfit: 0.80,
+	}
+	if err := st.Position().CreateOpenPosition(pos); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	st.Position().MarkManualClose("t1", "BRUSDT", "long")
+	if !st.Position().consumeManualClose("t1", "BRUSDT", "long") {
+		t.Fatal("marker not consumable")
+	}
+	if st.Position().consumeManualClose("t1", "BRUSDT", "long") {
+		t.Fatal("marker consumed twice")
+	}
+
+	st.Position().MarkManualClose("t1", "BRUSDT", "long")
+	pb := NewPositionBuilder(st.Position())
+	if err := pb.ProcessTrade("t1", "ex", "binance", "BRUSDT", "LONG", "close_long", 10, 0.6693, 0, 0, time.Now().UTC().UnixMilli(), "o1"); err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	closedList, err := st.Position().GetClosedPositions("t1", 5)
+	if err != nil || len(closedList) != 1 {
+		t.Fatalf("closed=%v err=%v", closedList, err)
+	}
+	if closedList[0].CloseReason != "manual" {
+		t.Fatalf("close_reason=%q want manual", closedList[0].CloseReason)
+	}
+
+	trades, err := st.GetRecentTradesWithReason("t1", 15)
+	if err != nil || len(trades) != 1 {
+		t.Fatalf("trades=%v err=%v", trades, err)
+	}
+	if trades[0].CloseReason != "manual" {
+		t.Fatalf("recent reason=%q want manual", trades[0].CloseReason)
+	}
+}
+
+func TestManualCloseMarkerExpires(t *testing.T) {
+	st := newClassifyTestStore(t)
+	st.Position().MarkManualClose("t1", "BRUSDT", "long")
+	st.Position().markMu.Lock()
+	st.Position().manual[manualCloseKey("t1", "BRUSDT", "long")] = time.Now().UTC().Add(-manualCloseTTL - time.Minute).UnixMilli()
+	st.Position().markMu.Unlock()
+	if st.Position().consumeManualClose("t1", "BRUSDT", "long") {
+		t.Fatal("expired marker should not be consumed as manual")
 	}
 }

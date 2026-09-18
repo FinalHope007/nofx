@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -129,12 +130,52 @@ func (TraderPosition) TableName() string {
 
 // PositionStore position storage
 type PositionStore struct {
-	db *gorm.DB
+	db     *gorm.DB
+	markMu sync.Mutex
+	manual map[string]int64
 }
 
 // NewPositionStore creates position storage instance
 func NewPositionStore(db *gorm.DB) *PositionStore {
-	return &PositionStore{db: db}
+	return &PositionStore{
+		db:     db,
+		manual: make(map[string]int64),
+	}
+}
+
+// manualCloseTTL bounds how long a manual-close marker is honored, covering the
+// delay between the UI close request and OrderSync recording the close.
+const manualCloseTTL = 10 * time.Minute
+
+// MarkManualClose records that the user manually closed a position through the
+// UI. The marker is consumed by the next matching close so the resulting trade
+// is labeled "manual" instead of being inferred from price/PnL.
+func (s *PositionStore) MarkManualClose(traderID, symbol, side string) {
+	key := manualCloseKey(traderID, symbol, side)
+	s.markMu.Lock()
+	s.manual[key] = time.Now().UTC().UnixMilli()
+	s.markMu.Unlock()
+}
+
+// consumeManualClose returns true and clears the marker if a fresh manual-close
+// marker exists for the position.
+func (s *PositionStore) consumeManualClose(traderID, symbol, side string) bool {
+	key := manualCloseKey(traderID, symbol, side)
+	s.markMu.Lock()
+	defer s.markMu.Unlock()
+	ts, ok := s.manual[key]
+	if !ok {
+		return false
+	}
+	delete(s.manual, key)
+	if time.Now().UTC().UnixMilli()-ts > manualCloseTTL.Milliseconds() {
+		return false
+	}
+	return true
+}
+
+func manualCloseKey(traderID, symbol, side string) string {
+	return traderID + "|" + strings.ToUpper(symbol) + "|" + strings.ToLower(side)
 }
 
 // isPostgres checks if the database is PostgreSQL
