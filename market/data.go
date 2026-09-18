@@ -145,8 +145,8 @@ func GetWithExchange(symbol, exchange string) (*Data, error) {
 // timeframes: list of timeframes, e.g. ["5m", "15m", "1h", "4h"]
 // primaryTimeframe: primary timeframe (used for calculating current indicators), defaults to timeframes[0]
 // count: number of K-lines for each timeframe
-func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe string, count int) (*Data, error) {
-	return GetWithTimeframesWithExchange(symbol, timeframes, primaryTimeframe, count, "")
+func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe string, count int, periods IndicatorPeriods) (*Data, error) {
+	return GetWithTimeframesWithExchange(symbol, timeframes, primaryTimeframe, count, "", periods)
 }
 
 // GetWithTimeframesWithExchange retrieves market data for specified multiple
@@ -156,7 +156,7 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 //   - otherwise     -> CoinAnk (default, current behavior)
 //
 // Signature and behavior otherwise mirror GetWithTimeframes.
-func GetWithTimeframesWithExchange(symbol string, timeframes []string, primaryTimeframe string, count int, exchange string) (*Data, error) {
+func GetWithTimeframesWithExchange(symbol string, timeframes []string, primaryTimeframe string, count int, exchange string, periods IndicatorPeriods) (*Data, error) {
 	symbol = Normalize(symbol)
 
 	if len(timeframes) == 0 {
@@ -234,7 +234,7 @@ func GetWithTimeframesWithExchange(symbol string, timeframes []string, primaryTi
 		}
 
 		// Calculate series data for this timeframe (use count from config)
-		seriesData := calculateTimeframeSeries(klines, tf, count, IndicatorPeriods{})
+		seriesData := calculateTimeframeSeries(klines, tf, count, periods)
 		timeframeData[tf] = seriesData
 	}
 
