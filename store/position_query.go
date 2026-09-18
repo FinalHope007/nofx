@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 )
 
 // TraderStats trading statistics metrics
@@ -125,6 +126,7 @@ type RecentTrade struct {
 	EntryTime    int64   `json:"entry_time"`
 	ExitTime     int64   `json:"exit_time"`
 	HoldDuration string  `json:"hold_duration"`
+	CloseReason  string  `json:"close_reason"`
 }
 
 // GetRecentTrades gets recent closed trades
@@ -167,6 +169,132 @@ func (s *PositionStore) GetRecentTrades(traderID string, limit int) ([]RecentTra
 	}
 
 	return trades, nil
+}
+
+// GetRecentTradesWithReason gets recent closed trades annotated with a
+// classified close reason ("llm", "tp", "sl", "exchange").
+func (s *Store) GetRecentTradesWithReason(traderID string, limit int) ([]RecentTrade, error) {
+	var positions []TraderPosition
+	err := s.gdb.Where("trader_id = ? AND status = ?", traderID, "CLOSED").
+		Order("exit_time DESC").
+		Limit(limit).
+		Find(&positions).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to query recent trades: %w", err)
+	}
+
+	successfulLLMCloses := make(map[string][]int64)
+	if len(positions) > 0 {
+		minExit := positions[0].ExitTime
+		maxExit := positions[0].ExitTime
+		for _, pos := range positions {
+			if pos.ExitTime < minExit {
+				minExit = pos.ExitTime
+			}
+			if pos.ExitTime > maxExit {
+				maxExit = pos.ExitTime
+			}
+		}
+		from := time.UnixMilli(minExit).UTC().Add(-15 * time.Minute)
+		to := time.UnixMilli(maxExit).UTC().Add(15 * time.Minute)
+		records, err := s.Decision().GetRecordsInRange(traderID, from, to)
+		if err == nil {
+			for _, rec := range records {
+				if !rec.Success {
+					continue
+				}
+				for _, d := range rec.Decisions {
+					if !d.Success {
+						continue
+					}
+					var side string
+					switch d.Action {
+					case "close_long":
+						side = "long"
+					case "close_short":
+						side = "short"
+					default:
+						continue
+					}
+					key := d.Symbol + "|" + side
+					successfulLLMCloses[key] = append(successfulLLMCloses[key], rec.Timestamp.UTC().UnixMilli())
+				}
+			}
+		}
+	}
+
+	const tol = 0.001
+	var trades []RecentTrade
+	for _, pos := range positions {
+		t := RecentTrade{
+			Symbol:      pos.Symbol,
+			Side:        strings.ToLower(pos.Side),
+			EntryPrice:  pos.EntryPrice,
+			ExitPrice:   pos.ExitPrice,
+			RealizedPnL: pos.RealizedPnL,
+			EntryTime:   pos.EntryTime / 1000,
+			CloseReason: classifyClose(pos, successfulLLMCloses, tol),
+		}
+
+		if pos.ExitTime > 0 {
+			t.ExitTime = pos.ExitTime / 1000
+			durationMs := pos.ExitTime - pos.EntryTime
+			t.HoldDuration = formatDurationMs(durationMs)
+		}
+
+		if pos.EntryPrice > 0 {
+			if t.Side == "long" {
+				t.PnLPct = (pos.ExitPrice - pos.EntryPrice) / pos.EntryPrice * 100 * float64(pos.Leverage)
+			} else {
+				t.PnLPct = (pos.EntryPrice - pos.ExitPrice) / pos.EntryPrice * 100 * float64(pos.Leverage)
+			}
+		}
+
+		trades = append(trades, t)
+	}
+
+	return trades, nil
+}
+
+func classifyClose(pos TraderPosition, successfulLLMCloses map[string][]int64, tol float64) string {
+	side := strings.ToLower(pos.Side)
+	symbol := pos.Symbol
+	for _, et := range successfulLLMCloses[symbol+"|"+side] {
+		if abs64(et-pos.ExitTime) <= 15*60*1000 {
+			return "llm"
+		}
+	}
+	exit := pos.ExitPrice
+	if pos.StopLoss > 0 {
+		if side == "long" && exit <= pos.StopLoss*(1+tol) {
+			return "sl"
+		}
+		if side == "short" && exit >= pos.StopLoss*(1-tol) {
+			return "sl"
+		}
+	}
+	if pos.TakeProfit > 0 {
+		if side == "long" && exit >= pos.TakeProfit*(1-tol) {
+			return "tp"
+		}
+		if side == "short" && exit <= pos.TakeProfit*(1+tol) {
+			return "tp"
+		}
+	}
+	if pos.RealizedPnL < 0 {
+		return "sl"
+	}
+	if pos.RealizedPnL > 0 {
+		return "tp"
+	}
+	return "exchange"
+}
+
+func abs64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // calculateSharpeRatioFromPnls calculates Sharpe ratio

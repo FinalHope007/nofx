@@ -205,6 +205,21 @@ func (s *DecisionStore) GetLatestRecords(traderID string, n int) ([]*DecisionRec
 	return records, nil
 }
 
+// GetRecordsInRange gets records for a trader within [from, to], oldest first.
+func (s *DecisionStore) GetRecordsInRange(traderID string, from, to time.Time) ([]*DecisionRecord, error) {
+	var dbRecords []*DecisionRecordDB
+	err := s.db.Where("trader_id = ? AND timestamp >= ? AND timestamp <= ?", traderID, from.UTC(), to.UTC()).
+		Order("timestamp ASC").Find(&dbRecords).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to query decision records in range: %w", err)
+	}
+	records := make([]*DecisionRecord, len(dbRecords))
+	for i, db := range dbRecords {
+		records[i] = db.toRecord()
+	}
+	return records, nil
+}
+
 // GetAllLatestRecords gets the latest N records for all traders
 func (s *DecisionStore) GetAllLatestRecords(n int) ([]*DecisionRecord, error) {
 	var dbRecords []*DecisionRecordDB
