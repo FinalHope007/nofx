@@ -29,7 +29,6 @@ type KlineBar struct {
 	Volume float64 `json:"volume"` // Volume
 }
 
-// IndicatorPeriods selected indicator periods
 type IndicatorPeriods struct {
 	EMA  []int `json:"ema,omitempty"`
 	RSI  []int `json:"rsi,omitempty"`
