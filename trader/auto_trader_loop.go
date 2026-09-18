@@ -837,6 +837,35 @@ func sortDecisionsByPriority(decisions []kernel.Decision) []kernel.Decision {
 	return sorted
 }
 
+// prefetchRequestsPerCoin returns the number of data-source requests the
+// pre-cycle prefetch will issue per coin, accounting for Binance technical,
+// Binance sentiment, and AltFins detail fetches. AltFins adds one resolve
+// call per coin on top of its per-interval detail requests.
+func prefetchRequestsPerCoin(cfg *store.StrategyConfig) int {
+	if cfg == nil {
+		return 0
+	}
+	requestsPerCoin := 0
+	if cfg.Indicators.EnableBinanceTechnicalData {
+		intervals := cfg.Indicators.BinanceTechnicalIntervals
+		if len(intervals) == 0 {
+			intervals = []string{"1h"}
+		}
+		requestsPerCoin += len(intervals)
+	}
+	if cfg.Indicators.EnableBinanceSentimentData {
+		requestsPerCoin++
+	}
+	if cfg.Indicators.EnableAltFinsData {
+		ivs := cfg.Indicators.AltFinsIntervals
+		if len(ivs) == 0 {
+			ivs = []string{"MINUTES15", "DAILY"}
+		}
+		requestsPerCoin += len(ivs) + 1 // +1 resolve call per coin
+	}
+	return requestsPerCoin
+}
+
 // scheduleBinancePrefetch schedules a prefetch of Binance per-coin detail
 // to fire leadTime before the next cycle trigger. The prefetch warms the
 // 10-minute TTL cache so attachPerCoinSignals finds cache hits at cycle time.
@@ -849,20 +878,10 @@ func (at *AutoTrader) scheduleBinancePrefetch() {
 		return
 	}
 
-	// Calculate lead time based on enabled Binance data sources.
-	requestsPerCoin := 0
-	if cfg.Indicators.EnableBinanceTechnicalData {
-		intervals := cfg.Indicators.BinanceTechnicalIntervals
-		if len(intervals) == 0 {
-			intervals = []string{"1h"}
-		}
-		requestsPerCoin += len(intervals)
-	}
-	if cfg.Indicators.EnableBinanceSentimentData {
-		requestsPerCoin++
-	}
+	// Calculate lead time based on enabled per-coin data sources.
+	requestsPerCoin := prefetchRequestsPerCoin(cfg)
 	if requestsPerCoin == 0 {
-		return // no Binance data sources enabled, no prefetch needed
+		return // no per-coin data sources enabled, no prefetch needed
 	}
 
 	const prefetchPoolSize = 30
@@ -920,6 +939,12 @@ func (at *AutoTrader) scheduleBinancePrefetch() {
 		runRateLimitedPrefetch(symbols, delayPerRequest, func(sym string) {
 			at.strategyEngine.PrefetchBinanceDetails(context.Background(), []string{sym})
 		})
+
+		if cfg.Indicators.EnableAltFinsData {
+			runRateLimitedPrefetch(symbols, delayPerRequest, func(sym string) {
+				at.strategyEngine.PrefetchAltFinsDetails(context.Background(), []string{sym})
+			})
+		}
 
 		elapsed := time.Since(start)
 		at.logInfof("✅ Binance prefetch complete: %d symbols in %v", len(symbols), elapsed)
