@@ -62,8 +62,17 @@ All closes (LLM and exchange) currently flow through
 in `store/position_query.go:GetRecentTrades`:
 
 1. **`llm`** — a `close_long` / `close_short` decision for the position's
-   `(symbol, side)` exists in the decision log within a window around the exit
-   time (e.g. `[exit - cycleWindow, exit + cycleWindow]`).
+   `(symbol, side)` exists in the decision log with `success == true` within a
+   window around the exit time (e.g. `[exit - cycleWindow, exit + cycleWindow]`).
+
+   **The `success == true` requirement is mandatory.** A close decision can be
+   *blocked* by the anti-churn throttle (observed in the log: cycle 143,
+   `close_long` PENGUUSDT `success:false` with a throttle reason) and the
+   position stays open. If blocked decisions matched, a later exchange TP/SL
+   exit would be misclassified as `[LLM close]`. A blocked close is treated
+   exactly like no close decision: fall through to SL/TP/PnL classification.
+   (Decision-log evidence: cycle 150 `close_long` BRUSDT `success:true` is a
+   genuine LLM close; cycle 143 `close_long` PENGUUSDT `success:false` is not.)
 2. **`sl`** — no LLM decision, and the exit is on the loss side: exit at/beyond
    the recorded SL (long: `exit <= SL*(1+tol)`; short: `exit >= SL*(1-tol)`) or,
    when SL is unrecorded, PnL < 0.
@@ -130,15 +139,18 @@ AI open decision (SL/TP validated >0)
 - SL/TP persistence failure: logged, non-fatal.
 - Decision-log lookup failure: classification falls back to price/PnL, then
   `exchange`; must not fail `GetRecentTrades`.
+- Blocked/failed close decision (`success:false`, e.g. throttle): treated as no
+  close decision; the trade classifies by SL/TP/PnL, never `llm`.
 - Legacy positions without recorded SL/TP: `none` on the position line; recent
-  closes classify by LLM-decision presence then PnL sign.
+  closes classify by successful LLM-decision presence then PnL sign.
 
 ## Testing
 
 - `store`: SL/TP persist and round-trip; `handleOpen` averaging preserves
   existing SL/TP; `GetRecentTrades` returns correct `CloseReason` for
-  (a) matching LLM close decision, (b) SL hit without decision, (c) TP hit
-  without decision, (d) legacy/unknown.
+  (a) matching successful LLM close decision, (b) **blocked/throttled close
+  decision → NOT `llm`** (falls through to SL/TP/PnL), (c) SL hit without
+  decision, (d) TP hit without decision, (e) legacy/unknown.
 - `kernel`: prompt test asserting the open-position line renders `Opened ...
   (Holding ...)`, `SL`, `TP`, distances, and the `none` fallback; recent-trade
   tags and tally render; Decision Process contains the guidance line.
