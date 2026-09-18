@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"nofx/store"
@@ -50,5 +51,29 @@ func TestFetchMarketDataEarlyExit(t *testing.T) {
 		// Expected to fail on market data fetch with fake exchange
 		// The key assertion is it doesn't hang or panic
 		t.Logf("expected fetch error with fake exchange: %v", err)
+	}
+}
+
+func TestIndicatorPeriodsFor(t *testing.T) {
+	cfg := store.IndicatorConfig{
+		EMAPeriods:  []int{10},
+		RSIPeriods:  []int{6, 12},
+		ATRPeriods:  []int{21},
+		BOLLPeriods: []int{30},
+	}
+
+	got := indicatorPeriodsFor(cfg)
+
+	if !reflect.DeepEqual(got.EMA, []int{10}) {
+		t.Fatalf("EMA: got %v, want %v", got.EMA, []int{10})
+	}
+	if !reflect.DeepEqual(got.RSI, []int{6, 12}) {
+		t.Fatalf("RSI: got %v, want %v", got.RSI, []int{6, 12})
+	}
+	if !reflect.DeepEqual(got.ATR, []int{21}) {
+		t.Fatalf("ATR: got %v, want %v", got.ATR, []int{21})
+	}
+	if !reflect.DeepEqual(got.BOLL, []int{30}) {
+		t.Fatalf("BOLL: got %v, want %v", got.BOLL, []int{30})
 	}
 }

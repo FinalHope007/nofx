@@ -404,6 +404,8 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 	config := engine.GetConfig()
 	ctx.MarketDataMap = make(map[string]*market.Data)
 
+	periods := indicatorPeriodsFor(config.Indicators)
+
 	timeframes := config.Indicators.Klines.SelectedTimeframes
 	primaryTimeframe := config.Indicators.Klines.PrimaryTimeframe
 	klineCount := config.Indicators.Klines.PrimaryCount
@@ -430,7 +432,7 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 
 	// 1. First fetch data for position coins (must fetch)
 	for _, pos := range ctx.Positions {
-		data, err := market.GetWithTimeframesWithExchange(pos.Symbol, timeframes, primaryTimeframe, klineCount, engine.exchange, market.IndicatorPeriods{})
+		data, err := market.GetWithTimeframesWithExchange(pos.Symbol, timeframes, primaryTimeframe, klineCount, engine.exchange, periods)
 		if err != nil {
 			logger.Infof("⚠️  Failed to fetch market data for position %s: %v", pos.Symbol, err)
 			continue
@@ -459,7 +461,7 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 			continue
 		}
 
-		data, err := market.GetWithTimeframesWithExchange(coin.Symbol, timeframes, primaryTimeframe, klineCount, engine.exchange, market.IndicatorPeriods{})
+		data, err := market.GetWithTimeframesWithExchange(coin.Symbol, timeframes, primaryTimeframe, klineCount, engine.exchange, periods)
 		if err != nil {
 			logger.Infof("⚠️  Failed to fetch market data for %s: %v", coin.Symbol, err)
 			continue
@@ -488,6 +490,15 @@ func fetchMarketDataWithStrategy(ctx *Context, engine *StrategyEngine) error {
 
 	logger.Infof("📊 Successfully fetched multi-timeframe market data for %d coins", len(ctx.MarketDataMap))
 	return nil
+}
+
+func indicatorPeriodsFor(cfg store.IndicatorConfig) market.IndicatorPeriods {
+	return market.IndicatorPeriods{
+		EMA:  cfg.EMAPeriods,
+		RSI:  cfg.RSIPeriods,
+		ATR:  cfg.ATRPeriods,
+		BOLL: cfg.BOLLPeriods,
+	}
 }
 
 func pruneCandidateCoinsWithoutMarketData(ctx *Context) {
