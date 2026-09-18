@@ -17,6 +17,35 @@ const freeUnit = (variant: 'gainers' | 'losers' | 'volume'): ScopeUnit => ({
 })
 
 describe('strategy factory', () => {
+  const base = {
+    name: 'Test',
+    custom_prompt: '',
+    scan_interval_minutes: 15,
+    btcEthMaxLeverage: 5,
+    altcoinMaxLeverage: 5,
+    btcEthPositionRatio: 5,
+    altcoinPositionRatio: 5,
+    isCrossMargin: true,
+    selectedTimeframes: ['15m'],
+    excludedCoins: [],
+    maxPositions: 3,
+    minPositionSize: 12,
+    minRiskRewardRatio: 3.0,
+    maxMarginUsage: 1.0,
+    minConfidence: 78,
+    enableOILiquidityFilter: true,
+    oiLiquidityFilterMinUSDT: 15000000,
+    maxOpensPerHour: 3,
+    maxOpensPerCycle: 2,
+    minHoldDurationMin: 90,
+    noiseCloseHoldDurationMin: 180,
+    reentryCooldownMin: 240,
+    earlyCloseStopLossBypassPct: -3.0,
+    earlyCloseTakeProfitBypassPct: 8.0,
+    noiseCloseLossFloorPct: -2.0,
+    noiseCloseProfitCeilingPct: 3.0,
+  }
+
   it('maps a single free scope to its concrete coin source without scope_mode/custom_scope', () => {
     const cs = buildCoinSource(freeUnit('gainers'))
     expect(cs.source_type).toBe('hyper_rank')
@@ -62,22 +91,42 @@ describe('strategy factory', () => {
 
   it('maps data-source toggles and durations into indicators', () => {
     const cfg = buildStrategyConfig({
-      name: 'Test', custom_prompt: '', scan_interval_minutes: 15,
-      btcEthMaxLeverage: 5, altcoinMaxLeverage: 5,
-      btcEthPositionRatio: 5, altcoinPositionRatio: 5,
-      isCrossMargin: true, selectedTimeframes: ['15m'], excludedCoins: [],
+      name: 'Test',
+      custom_prompt: '',
+      scan_interval_minutes: 15,
+      btcEthMaxLeverage: 5,
+      altcoinMaxLeverage: 5,
+      btcEthPositionRatio: 5,
+      altcoinPositionRatio: 5,
+      isCrossMargin: true,
+      selectedTimeframes: ['15m'],
+      excludedCoins: [],
       decisionContext: { enabled: true, recent_count: 8, mode: 'structured' },
       scopeUnit: freeUnit('gainers'),
-      enableAI500Data: true, enableOIData: true, enableNetflowData: true,
-      enablePriceData: true, dataDurations: ['15m', '1h'],
-      enableEma: true, enableMacd: true, enableRsi: true,
-      maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
-      maxMarginUsage: 1.0, minConfidence: 78,
-      enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
-      maxOpensPerHour: 3, maxOpensPerCycle: 2,
-      minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240,
-      earlyCloseStopLossBypassPct: -3.0, earlyCloseTakeProfitBypassPct: 8.0,
-      noiseCloseLossFloorPct: -2.0, noiseCloseProfitCeilingPct: 3.0,
+      enableAI500Data: true,
+      enableOIData: true,
+      enableNetflowData: true,
+      enablePriceData: true,
+      dataDurations: ['15m', '1h'],
+      enableEma: true,
+      enableMacd: true,
+      enableRsi: true,
+      maxPositions: 3,
+      minPositionSize: 12,
+      minRiskRewardRatio: 3.0,
+      maxMarginUsage: 1.0,
+      minConfidence: 78,
+      enableOILiquidityFilter: true,
+      oiLiquidityFilterMinUSDT: 15000000,
+      maxOpensPerHour: 3,
+      maxOpensPerCycle: 2,
+      minHoldDurationMin: 90,
+      noiseCloseHoldDurationMin: 180,
+      reentryCooldownMin: 240,
+      earlyCloseStopLossBypassPct: -3.0,
+      earlyCloseTakeProfitBypassPct: 8.0,
+      noiseCloseLossFloorPct: -2.0,
+      noiseCloseProfitCeilingPct: 3.0,
     })
     const ind = cfg.ai_config?.indicators
     expect(ind?.enable_ai500_data).toBe(true)
@@ -104,13 +153,22 @@ describe('strategy factory', () => {
       excludedCoins: ['SAMECOIN'],
       decisionContext: { enabled: true, recent_count: 8, mode: 'digest' },
       scopeUnit: freeUnit('gainers'),
-      maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
-      maxMarginUsage: 1.0, minConfidence: 78,
-      enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
-      maxOpensPerHour: 3, maxOpensPerCycle: 2,
-      minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240,
-      earlyCloseStopLossBypassPct: -3.0, earlyCloseTakeProfitBypassPct: 8.0,
-      noiseCloseLossFloorPct: -2.0, noiseCloseProfitCeilingPct: 3.0,
+      maxPositions: 3,
+      minPositionSize: 12,
+      minRiskRewardRatio: 3.0,
+      maxMarginUsage: 1.0,
+      minConfidence: 78,
+      enableOILiquidityFilter: true,
+      oiLiquidityFilterMinUSDT: 15000000,
+      maxOpensPerHour: 3,
+      maxOpensPerCycle: 2,
+      minHoldDurationMin: 90,
+      noiseCloseHoldDurationMin: 180,
+      reentryCooldownMin: 240,
+      earlyCloseStopLossBypassPct: -3.0,
+      earlyCloseTakeProfitBypassPct: 8.0,
+      noiseCloseLossFloorPct: -2.0,
+      noiseCloseProfitCeilingPct: 3.0,
     })
     expect(cfg.ai_config?.custom_prompt).toBe('hello')
     expect(cfg.ai_config?.decision_context).toEqual({
@@ -121,24 +179,36 @@ describe('strategy factory', () => {
   })
 
   it('emits an explicit empty indicator period list when the category is enabled', () => {
-    const base = {
-      name: 'Test', custom_prompt: '', scan_interval_minutes: 15,
-      btcEthMaxLeverage: 5, altcoinMaxLeverage: 5,
-      btcEthPositionRatio: 5, altcoinPositionRatio: 5,
-      isCrossMargin: true, selectedTimeframes: ['15m'], excludedCoins: [],
-      maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
-      maxMarginUsage: 1.0, minConfidence: 78,
-      enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
-      maxOpensPerHour: 3, maxOpensPerCycle: 2,
-      minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240,
-      earlyCloseStopLossBypassPct: -3.0, earlyCloseTakeProfitBypassPct: 8.0,
-      noiseCloseLossFloorPct: -2.0, noiseCloseProfitCeilingPct: 3.0,
-    }
-    const enabled = buildStrategyConfig({ ...base, enableEma: true, emaPeriods: [] })
+    const enabled = buildStrategyConfig({
+      ...base,
+      enableEma: true,
+      emaPeriods: [],
+    })
     expect(enabled.ai_config?.indicators?.ema_periods).toEqual([])
 
-    const disabled = buildStrategyConfig({ ...base, enableEma: false, emaPeriods: [] })
+    const disabled = buildStrategyConfig({
+      ...base,
+      enableEma: false,
+      emaPeriods: [],
+    })
     expect(disabled.ai_config?.indicators?.ema_periods).toBeUndefined()
+  })
+
+  it('maps altfins + vergex per-coin toggles into indicators', () => {
+    const config = buildStrategyConfig({
+      ...base,
+      enableAltFinsData: true,
+      altfinsIntervals: ['MINUTES15', 'DAILY'],
+      enableVergexSignalLabData: true,
+      enableVergexHeatmapData: false,
+    })
+    expect(config.ai_config.indicators.enable_altfins_data).toBe(true)
+    expect(config.ai_config.indicators.altfins_intervals).toEqual([
+      'MINUTES15',
+      'DAILY',
+    ])
+    expect(config.ai_config.indicators.enable_vergex_signal_lab_data).toBe(true)
+    expect(config.ai_config.indicators.enable_vergex_heatmap_data).toBe(false)
   })
 
   it('buildCoinSource maps binance_technical unit to concrete source', () => {

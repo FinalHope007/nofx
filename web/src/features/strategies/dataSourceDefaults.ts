@@ -7,6 +7,9 @@ export function defaultDataSources(scope: ScopeUnit | null): {
   enablePriceData: boolean
   enableBinanceTechnicalData: boolean
   enableBinanceSentimentData: boolean
+  enableAltFinsData: boolean
+  enableVergexSignalLabData: boolean
+  enableVergexHeatmapData: boolean
 } {
   return {
     enableAI500Data: scope?.source_type === 'ai500',
@@ -15,5 +18,8 @@ export function defaultDataSources(scope: ScopeUnit | null): {
     enablePriceData: scope?.source_type === 'nofxos_price',
     enableBinanceTechnicalData: scope?.source_type === 'binance_technical',
     enableBinanceSentimentData: scope?.source_type === 'binance_sentiment',
+    enableAltFinsData: false,
+    enableVergexSignalLabData: false,
+    enableVergexHeatmapData: false,
   }
 }

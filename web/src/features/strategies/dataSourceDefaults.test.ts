@@ -28,6 +28,9 @@ describe('defaultDataSources', () => {
       enablePriceData: false,
       enableBinanceTechnicalData: false,
       enableBinanceSentimentData: false,
+      enableAltFinsData: false,
+      enableVergexSignalLabData: false,
+      enableVergexHeatmapData: false,
     })
   })
 
@@ -51,6 +54,9 @@ describe('defaultDataSources', () => {
       enablePriceData: false,
       enableBinanceTechnicalData: false,
       enableBinanceSentimentData: false,
+      enableAltFinsData: false,
+      enableVergexSignalLabData: false,
+      enableVergexHeatmapData: false,
     })
   })
 
@@ -62,6 +68,9 @@ describe('defaultDataSources', () => {
       enablePriceData: false,
       enableBinanceTechnicalData: false,
       enableBinanceSentimentData: false,
+      enableAltFinsData: false,
+      enableVergexSignalLabData: false,
+      enableVergexHeatmapData: false,
     })
   })
 })

@@ -26,6 +26,10 @@ export interface StrategyEditorForm {
   enableBinanceTechnicalData?: boolean
   enableBinanceSentimentData?: boolean
   binanceTechnicalIntervals?: ('1h' | '24h')[]
+  enableAltFinsData?: boolean
+  altfinsIntervals?: ('MINUTES15' | 'HOURLY' | 'HOURS4' | 'HOURS12' | 'DAILY')[]
+  enableVergexSignalLabData?: boolean
+  enableVergexHeatmapData?: boolean
   dataDurations?: string[]
   enableEma?: boolean
   enableMacd?: boolean
@@ -72,16 +76,58 @@ export interface StrategyEditorForm {
 
 export type TradingStyle = 'scalp' | 'intraday' | 'swing' | 'default'
 
-export const TRADING_STYLE_PRESETS: Record<TradingStyle, Partial<StrategyEditorForm>> = {
-  scalp: { maxPositions: 5, maxOpensPerHour: 8, maxOpensPerCycle: 4, minHoldDurationMin: 10, noiseCloseHoldDurationMin: 30, reentryCooldownMin: 30, minRiskRewardRatio: 1.5, minPositionSize: 12 },
-  intraday: { maxPositions: 4, maxOpensPerHour: 5, maxOpensPerCycle: 3, minHoldDurationMin: 45, noiseCloseHoldDurationMin: 90, reentryCooldownMin: 120, minRiskRewardRatio: 2.0, minPositionSize: 12 },
-  swing: { maxPositions: 2, maxOpensPerHour: 2, maxOpensPerCycle: 1, minHoldDurationMin: 360, noiseCloseHoldDurationMin: 720, reentryCooldownMin: 480, minRiskRewardRatio: 3.0, minPositionSize: 12 },
+export const TRADING_STYLE_PRESETS: Record<
+  TradingStyle,
+  Partial<StrategyEditorForm>
+> = {
+  scalp: {
+    maxPositions: 5,
+    maxOpensPerHour: 8,
+    maxOpensPerCycle: 4,
+    minHoldDurationMin: 10,
+    noiseCloseHoldDurationMin: 30,
+    reentryCooldownMin: 30,
+    minRiskRewardRatio: 1.5,
+    minPositionSize: 12,
+  },
+  intraday: {
+    maxPositions: 4,
+    maxOpensPerHour: 5,
+    maxOpensPerCycle: 3,
+    minHoldDurationMin: 45,
+    noiseCloseHoldDurationMin: 90,
+    reentryCooldownMin: 120,
+    minRiskRewardRatio: 2.0,
+    minPositionSize: 12,
+  },
+  swing: {
+    maxPositions: 2,
+    maxOpensPerHour: 2,
+    maxOpensPerCycle: 1,
+    minHoldDurationMin: 360,
+    noiseCloseHoldDurationMin: 720,
+    reentryCooldownMin: 480,
+    minRiskRewardRatio: 3.0,
+    minPositionSize: 12,
+  },
   // `default` preset mirrors defaultRiskControl() defaults so applying the
   // "Default" style is a true no-op; keep these fields in sync to avoid drift.
-  default: { maxPositions: 2, maxOpensPerHour: 3, maxOpensPerCycle: 2, minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240, minRiskRewardRatio: 3.0, minPositionSize: 12 },
+  default: {
+    maxPositions: 2,
+    maxOpensPerHour: 3,
+    maxOpensPerCycle: 2,
+    minHoldDurationMin: 90,
+    noiseCloseHoldDurationMin: 180,
+    reentryCooldownMin: 240,
+    minRiskRewardRatio: 3.0,
+    minPositionSize: 12,
+  },
 }
 
-export function applyTradingStyle(style: TradingStyle, form: StrategyEditorForm): StrategyEditorForm {
+export function applyTradingStyle(
+  style: TradingStyle,
+  form: StrategyEditorForm
+): StrategyEditorForm {
   const patch = TRADING_STYLE_PRESETS[style]
   return { ...form, tradingStyle: style, ...patch }
 }
@@ -97,23 +143,36 @@ export function buildCoinSource(unit: ScopeUnit | null): CoinSourceConfig {
       source_type: 'static',
       static_coins: [],
       excluded_coins: [],
-      use_ai500: false, ai500_limit: 0,
-      use_oi_top: false, oi_top_limit: 0,
-      use_oi_low: false, oi_low_limit: 0,
-      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+      use_ai500: false,
+      ai500_limit: 0,
+      use_oi_top: false,
+      oi_top_limit: 0,
+      use_oi_low: false,
+      oi_low_limit: 0,
+      use_hyper_all: false,
+      use_hyper_main: false,
+      vergex_limit: 0,
     }
   }
   if (unit.source_type === 'hyper_rank') {
     return {
       source_type: 'hyper_rank',
       hyper_rank_category: unit.category,
-      hyper_rank_direction: unit.variant as 'gainers' | 'losers' | 'volume' | undefined || 'gainers',
+      hyper_rank_direction:
+        (unit.variant as 'gainers' | 'losers' | 'volume' | undefined) ||
+        'gainers',
       hyper_rank_limit: clamp(unit.limit, 1, 50),
-      static_coins: [], excluded_coins: [],
-      use_ai500: false, ai500_limit: 0,
-      use_oi_top: false, oi_top_limit: 0,
-      use_oi_low: false, oi_low_limit: 0,
-      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+      static_coins: [],
+      excluded_coins: [],
+      use_ai500: false,
+      ai500_limit: 0,
+      use_oi_top: false,
+      oi_top_limit: 0,
+      use_oi_low: false,
+      oi_low_limit: 0,
+      use_hyper_all: false,
+      use_hyper_main: false,
+      vergex_limit: 0,
     }
   }
 
@@ -142,9 +201,13 @@ export function buildCoinSource(unit: ScopeUnit | null): CoinSourceConfig {
       oi_top_limit: isTop ? clamp(unit.limit, 1, 50) : 0,
       use_oi_low: !isTop,
       oi_low_limit: !isTop ? clamp(unit.limit, 1, 50) : 0,
-      static_coins: [], excluded_coins: [],
-      use_ai500: false, ai500_limit: 0,
-      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+      static_coins: [],
+      excluded_coins: [],
+      use_ai500: false,
+      ai500_limit: 0,
+      use_hyper_all: false,
+      use_hyper_main: false,
+      vergex_limit: 0,
     }
   }
 
@@ -153,11 +216,17 @@ export function buildCoinSource(unit: ScopeUnit | null): CoinSourceConfig {
     return {
       source_type: isInflow ? 'netflow_top' : 'netflow_low',
       netflow_limit: clamp(unit.limit, 1, 50),
-      static_coins: [], excluded_coins: [],
-      use_ai500: false, ai500_limit: 0,
-      use_oi_top: false, oi_top_limit: 0,
-      use_oi_low: false, oi_low_limit: 0,
-      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+      static_coins: [],
+      excluded_coins: [],
+      use_ai500: false,
+      ai500_limit: 0,
+      use_oi_top: false,
+      oi_top_limit: 0,
+      use_oi_low: false,
+      oi_low_limit: 0,
+      use_hyper_all: false,
+      use_hyper_main: false,
+      vergex_limit: 0,
     }
   }
 
@@ -166,11 +235,17 @@ export function buildCoinSource(unit: ScopeUnit | null): CoinSourceConfig {
     return {
       source_type: isGainers ? 'price_top' : 'price_low',
       price_limit: clamp(unit.limit, 1, 50),
-      static_coins: [], excluded_coins: [],
-      use_ai500: false, ai500_limit: 0,
-      use_oi_top: false, oi_top_limit: 0,
-      use_oi_low: false, oi_low_limit: 0,
-      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+      static_coins: [],
+      excluded_coins: [],
+      use_ai500: false,
+      ai500_limit: 0,
+      use_oi_top: false,
+      oi_top_limit: 0,
+      use_oi_low: false,
+      oi_low_limit: 0,
+      use_hyper_all: false,
+      use_hyper_main: false,
+      vergex_limit: 0,
     }
   }
 
@@ -181,11 +256,16 @@ export function buildCoinSource(unit: ScopeUnit | null): CoinSourceConfig {
       vergex_limit: clamp(unit.limit, 1, 50),
       vergex_market_type: marketType,
       vergex_direction: unit.variant,
-      static_coins: [], excluded_coins: [],
-      use_ai500: false, ai500_limit: 0,
-      use_oi_top: false, oi_top_limit: 0,
-      use_oi_low: false, oi_low_limit: 0,
-      use_hyper_all: false, use_hyper_main: false,
+      static_coins: [],
+      excluded_coins: [],
+      use_ai500: false,
+      ai500_limit: 0,
+      use_oi_top: false,
+      oi_top_limit: 0,
+      use_oi_low: false,
+      oi_low_limit: 0,
+      use_hyper_all: false,
+      use_hyper_main: false,
     }
   }
 
@@ -195,11 +275,17 @@ export function buildCoinSource(unit: ScopeUnit | null): CoinSourceConfig {
       binance_technical_interval: unit.interval ?? '1h',
       binance_technical_direction: unit.direction ?? 'top',
       binance_technical_limit: clamp(unit.limit, 1, 50),
-      static_coins: [], excluded_coins: [],
-      use_ai500: false, ai500_limit: 0,
-      use_oi_top: false, oi_top_limit: 0,
-      use_oi_low: false, oi_low_limit: 0,
-      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+      static_coins: [],
+      excluded_coins: [],
+      use_ai500: false,
+      ai500_limit: 0,
+      use_oi_top: false,
+      oi_top_limit: 0,
+      use_oi_low: false,
+      oi_low_limit: 0,
+      use_hyper_all: false,
+      use_hyper_main: false,
+      vergex_limit: 0,
     }
   }
   if (unit.source_type === 'binance_sentiment') {
@@ -207,11 +293,17 @@ export function buildCoinSource(unit: ScopeUnit | null): CoinSourceConfig {
       source_type: 'binance_sentiment',
       binance_sentiment_direction: unit.direction ?? 'top',
       binance_sentiment_limit: clamp(unit.limit, 1, 50),
-      static_coins: [], excluded_coins: [],
-      use_ai500: false, ai500_limit: 0,
-      use_oi_top: false, oi_top_limit: 0,
-      use_oi_low: false, oi_low_limit: 0,
-      use_hyper_all: false, use_hyper_main: false, vergex_limit: 0,
+      static_coins: [],
+      excluded_coins: [],
+      use_ai500: false,
+      ai500_limit: 0,
+      use_oi_top: false,
+      oi_top_limit: 0,
+      use_oi_low: false,
+      oi_low_limit: 0,
+      use_hyper_all: false,
+      use_hyper_main: false,
+      vergex_limit: 0,
     }
   }
 
@@ -274,17 +366,49 @@ export function defaultRiskControl(input?: {
     min_risk_reward_ratio: clamp(input?.minRiskRewardRatio ?? 3, 0.1, 100),
     min_confidence: clamp(input?.minConfidence ?? 78, 0, 100),
     enable_oi_liquidity_filter: input?.enableOILiquidityFilter ?? true,
-    oi_liquidity_filter_min_usdt: clamp(input?.oiLiquidityFilterMinUSDT ?? 15000000, 0, Number.MAX_SAFE_INTEGER),
+    oi_liquidity_filter_min_usdt: clamp(
+      input?.oiLiquidityFilterMinUSDT ?? 15000000,
+      0,
+      Number.MAX_SAFE_INTEGER
+    ),
     throttling: {
       max_opens_per_hour: clamp(input?.maxOpensPerHour ?? 3, 1, 100),
       max_opens_per_cycle: clamp(input?.maxOpensPerCycle ?? 2, 1, 100),
-      min_hold_duration_min: clamp(input?.minHoldDurationMin ?? 90, 0, Number.MAX_SAFE_INTEGER),
-      noise_close_hold_duration_min: clamp(input?.noiseCloseHoldDurationMin ?? 180, 0, Number.MAX_SAFE_INTEGER),
-      reentry_cooldown_min: clamp(input?.reentryCooldownMin ?? 240, 0, Number.MAX_SAFE_INTEGER),
-      early_close_stop_loss_bypass_pct: clamp(input?.earlyCloseStopLossBypassPct ?? -3.0, -100, 100),
-      early_close_take_profit_bypass_pct: clamp(input?.earlyCloseTakeProfitBypassPct ?? 8.0, -100, 100),
-      noise_close_loss_floor_pct: clamp(input?.noiseCloseLossFloorPct ?? -2.0, -100, 100),
-      noise_close_profit_ceiling_pct: clamp(input?.noiseCloseProfitCeilingPct ?? 3.0, -100, 100),
+      min_hold_duration_min: clamp(
+        input?.minHoldDurationMin ?? 90,
+        0,
+        Number.MAX_SAFE_INTEGER
+      ),
+      noise_close_hold_duration_min: clamp(
+        input?.noiseCloseHoldDurationMin ?? 180,
+        0,
+        Number.MAX_SAFE_INTEGER
+      ),
+      reentry_cooldown_min: clamp(
+        input?.reentryCooldownMin ?? 240,
+        0,
+        Number.MAX_SAFE_INTEGER
+      ),
+      early_close_stop_loss_bypass_pct: clamp(
+        input?.earlyCloseStopLossBypassPct ?? -3.0,
+        -100,
+        100
+      ),
+      early_close_take_profit_bypass_pct: clamp(
+        input?.earlyCloseTakeProfitBypassPct ?? 8.0,
+        -100,
+        100
+      ),
+      noise_close_loss_floor_pct: clamp(
+        input?.noiseCloseLossFloorPct ?? -2.0,
+        -100,
+        100
+      ),
+      noise_close_profit_ceiling_pct: clamp(
+        input?.noiseCloseProfitCeilingPct ?? 3.0,
+        -100,
+        100
+      ),
     },
   }
 }
@@ -303,7 +427,10 @@ export function buildStrategyConfig(form: StrategyEditorForm): StrategyConfig {
           enable_multi_timeframe: form.selectedTimeframes.length > 1,
           selected_timeframes: form.selectedTimeframes,
           longer_timeframe: form.longerTimeframe || undefined,
-          longer_count: form.longerCount && form.longerCount > 0 ? form.longerCount : undefined,
+          longer_count:
+            form.longerCount && form.longerCount > 0
+              ? form.longerCount
+              : undefined,
         },
         enable_raw_klines: true,
         enable_ema: form.enableEma ?? false,
@@ -324,8 +451,19 @@ export function buildStrategyConfig(form: StrategyEditorForm): StrategyConfig {
         enable_price_data: form.enablePriceData ?? false,
         enable_binance_technical_data: form.enableBinanceTechnicalData ?? false,
         enable_binance_sentiment_data: form.enableBinanceSentimentData ?? false,
-        binance_technical_intervals: form.binanceTechnicalIntervals?.length ? form.binanceTechnicalIntervals : undefined,
-        data_durations: form.dataDurations && form.dataDurations.length ? form.dataDurations : undefined,
+        binance_technical_intervals: form.binanceTechnicalIntervals?.length
+          ? form.binanceTechnicalIntervals
+          : undefined,
+        enable_altfins_data: form.enableAltFinsData ?? false,
+        altfins_intervals: form.altfinsIntervals?.length
+          ? form.altfinsIntervals
+          : undefined,
+        enable_vergex_signal_lab_data: form.enableVergexSignalLabData ?? false,
+        enable_vergex_heatmap_data: form.enableVergexHeatmapData ?? false,
+        data_durations:
+          form.dataDurations && form.dataDurations.length
+            ? form.dataDurations
+            : undefined,
         nofxos_api_key: '',
         enable_quant_data: false,
         enable_quant_oi: false,
