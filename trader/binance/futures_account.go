@@ -161,9 +161,33 @@ func (t *FuturesTrader) GetTrades(startTime time.Time, limit int) ([]types.Trade
 	return trades, nil
 }
 
-// GetTradesForSymbol retrieves trade history for a specific symbol
-// This is more reliable than using Income API which may have delays
-func (t *FuturesTrader) GetTradesForSymbol(symbol string, startTime time.Time, limit int) ([]types.TradeRecord, error) {
+// binanceUserTradesMaxWindow is the maximum span Binance accepts for the
+// /fapi/v1/userTrades endpoint between startTime and endTime. Requests whose
+// window is longer than this are rejected or return an empty page.
+const binanceUserTradesMaxWindow = 7 * 24 * time.Hour
+
+// splitTimeWindows divides [start, end] into consecutive windows no longer
+// than max. It returns the windows in ascending order. If end is not after
+// start it returns nil.
+func splitTimeWindows(start, end time.Time, max time.Duration) [][2]time.Time {
+	if !end.After(start) || max <= 0 {
+		return nil
+	}
+	var windows [][2]time.Time
+	for windowStart := start; windowStart.Before(end); {
+		windowEnd := windowStart.Add(max)
+		if windowEnd.After(end) {
+			windowEnd = end
+		}
+		windows = append(windows, [2]time.Time{windowStart, windowEnd})
+		windowStart = windowEnd
+	}
+	return windows
+}
+
+// getTradesForSymbolWindow queries a single symbol over one bounded window.
+// The window must not exceed binanceUserTradesMaxWindow.
+func (t *FuturesTrader) getTradesForSymbolWindow(symbol string, startTime, endTime time.Time, limit int) ([]types.TradeRecord, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -174,6 +198,7 @@ func (t *FuturesTrader) GetTradesForSymbol(symbol string, startTime time.Time, l
 	accountTrades, err := t.client.NewListAccountTradeService().
 		Symbol(symbol).
 		StartTime(startTime.UnixMilli()).
+		EndTime(endTime.UnixMilli()).
 		Limit(limit).
 		Do(context.Background())
 	if err != nil {
@@ -181,14 +206,21 @@ func (t *FuturesTrader) GetTradesForSymbol(symbol string, startTime time.Time, l
 	}
 
 	var trades []types.TradeRecord
+	seen := make(map[string]bool)
 	for _, at := range accountTrades {
 		price, _ := strconv.ParseFloat(at.Price, 64)
 		qty, _ := strconv.ParseFloat(at.Quantity, 64)
 		fee, _ := strconv.ParseFloat(at.Commission, 64)
 		pnl, _ := strconv.ParseFloat(at.RealizedPnl, 64)
 
+		id := strconv.FormatInt(at.ID, 10)
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+
 		trade := types.TradeRecord{
-			TradeID:      strconv.FormatInt(at.ID, 10),
+			TradeID:      id,
 			Symbol:       at.Symbol,
 			Side:         string(at.Side),
 			PositionSide: string(at.PositionSide),
@@ -202,6 +234,43 @@ func (t *FuturesTrader) GetTradesForSymbol(symbol string, startTime time.Time, l
 	}
 
 	return trades, nil
+}
+
+// GetTradesForSymbol retrieves trade history for a specific symbol over the
+// window [startTime, now]. Spans longer than Binance's 7-day per-request cap
+// are chunked into consecutive 7-day windows and merged, so a stale sync
+// cursor cannot silently drop trades.
+func (t *FuturesTrader) GetTradesForSymbol(symbol string, startTime time.Time, limit int) ([]types.TradeRecord, error) {
+	return t.GetTradesForSymbolRange(symbol, startTime, time.Now().UTC(), limit)
+}
+
+// GetTradesForSymbolRange retrieves trade history for a specific symbol over
+// [startTime, endTime], chunking the span into <=7-day windows.
+func (t *FuturesTrader) GetTradesForSymbolRange(symbol string, startTime, endTime time.Time, limit int) ([]types.TradeRecord, error) {
+	if endTime.IsZero() {
+		endTime = time.Now().UTC()
+	}
+	if !endTime.After(startTime) {
+		return nil, nil
+	}
+
+	var all []types.TradeRecord
+	seen := make(map[string]bool)
+	for _, window := range splitTimeWindows(startTime, endTime, binanceUserTradesMaxWindow) {
+		trades, err := t.getTradesForSymbolWindow(symbol, window[0], window[1], limit)
+		if err != nil {
+			return nil, err
+		}
+		for _, trade := range trades {
+			if seen[trade.TradeID] {
+				continue
+			}
+			seen[trade.TradeID] = true
+			all = append(all, trade)
+		}
+	}
+
+	return all, nil
 }
 
 // GetTradesForSymbolFromID retrieves trade history for a specific symbol starting from a given trade ID

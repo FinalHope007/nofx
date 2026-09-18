@@ -139,7 +139,9 @@ func (t *FuturesTrader) SyncOrdersFromBinance(traderID string, exchangeID string
 			// Incremental sync: query from last known trade ID
 			trades, queryErr = t.GetTradesForSymbolFromID(symbol, lastID+1, 500)
 		} else {
-			// New symbol or first sync: query by time
+			// New symbol or first sync: query by time. GetTradesForSymbol
+			// chunks spans >7 days so a stale lastSyncTime cannot silently
+			// return an empty page (Binance caps userTrades at 7 days/request).
 			trades, queryErr = t.GetTradesForSymbol(symbol, lastSyncTime, 500)
 		}
 		apiCalls++
