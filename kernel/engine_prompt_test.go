@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"nofx/market"
+	"nofx/provider/altfins"
 	"nofx/provider/binance"
 	"nofx/provider/nofxos"
 	"nofx/store"
@@ -738,5 +739,54 @@ func TestRecentOrdersPromptShowsCloseReasonTagsAndTally(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
+	}
+}
+
+func TestFormatPerCoinSignalsAltFins(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.Indicators.EnableAltFinsData = true
+	cfg.Indicators.AltFinsIntervals = []string{"MINUTES15", "DAILY"}
+	engine := NewStrategyEngine(cfg)
+
+	engine.SetPerCoinSignals(map[string]PerCoinSignal{
+		"ZECUSDT": {
+			AltFins: map[string]*altfins.Analytics{
+				"MINUTES15": {
+					Interval:              "MINUTES15",
+					ShortTermTrend:        "Bearish (2/10)",
+					MediumTermTrend:       "Bearish (3/10)",
+					LongTermTrend:         "Neutral (5/10)",
+					ShortTermTrendChange:  "Strongly Bearish to Bearish",
+					MediumTermTrendChange: "Neutral to Bearish",
+					LongTermTrendChange:   "Bullish to Neutral",
+					MACDSignal:            "Bearish",
+					MACDSignalBarsAgo:     6,
+					MACDSignalAgeText:     "~90 min ago",
+					MACDHistogram:         "Bullish",
+				},
+				"DAILY": {
+					Interval:      "DAILY",
+					MACDSignal:    "Bullish",
+					MACDHistogram: "",
+				},
+			},
+		},
+	})
+
+	out := engine.formatPerCoinSignals("ZECUSDT", 1450.38)
+	if !strings.Contains(out, "=== ZECUSDT AltFins ===") {
+		t.Fatalf("missing AltFins header:\n%s", out)
+	}
+	if !strings.Contains(out, "[15m] Short Term Trend: Bearish (2/10), changed from Strongly Bearish to Bearish") {
+		t.Fatalf("missing 15m short term line:\n%s", out)
+	}
+	if !strings.Contains(out, "MACD Signal: Bearish crossover, 6 bars ago (~90 min ago)") {
+		t.Fatalf("missing MACD signal line:\n%s", out)
+	}
+	if !strings.Contains(out, "[1d]") {
+		t.Fatalf("missing 1d label:\n%s", out)
+	}
+	if strings.Contains(out, "MACD Histogram: \n") || strings.Contains(out, "MACD Histogram:\n") {
+		t.Fatalf("empty histogram should be omitted:\n%s", out)
 	}
 }

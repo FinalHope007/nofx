@@ -3,6 +3,7 @@ package kernel
 import (
 	"fmt"
 	"nofx/market"
+	"nofx/provider/altfins"
 	"nofx/provider/binance"
 	"nofx/provider/nofxos"
 	"nofx/provider/vergex"
@@ -1058,12 +1059,14 @@ func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float6
 	cfg := e.GetConfig()
 	ind := cfg.Indicators
 	if !ind.EnableAI500Data && !ind.EnableOIData && !ind.EnableNetflowData && !ind.EnablePriceData &&
-		!ind.EnableBinanceTechnicalData && !ind.EnableBinanceSentimentData {
+		!ind.EnableBinanceTechnicalData && !ind.EnableBinanceSentimentData &&
+		!ind.EnableAltFinsData && !ind.EnableVergexSignalLabData && !ind.EnableVergexHeatmapData {
 		return ""
 	}
 	sig, ok := e.PerCoinSignalFor(symbol)
 	if !ok || sig.AI500 == nil && len(sig.OI) == 0 && len(sig.Netflow) == 0 && len(sig.Price) == 0 &&
-		len(sig.BinanceTechnical) == 0 && len(sig.BinanceSentiment) == 0 {
+		len(sig.BinanceTechnical) == 0 && len(sig.BinanceSentiment) == 0 &&
+		len(sig.AltFins) == 0 && len(sig.VergexSignalLab) == 0 && len(sig.VergexHeatmap) == 0 {
 		return ""
 	}
 	var sb strings.Builder
@@ -1166,7 +1169,60 @@ func (e *StrategyEngine) formatPerCoinSignals(symbol string, currentPrice float6
 		sb.WriteString("\n")
 	}
 
+	if ind.EnableAltFinsData && len(sig.AltFins) > 0 {
+		sb.WriteString(fmt.Sprintf("=== %s AltFins ===\n", symbol))
+		for _, iv := range altfinsIntervalOrder(ind.AltFinsIntervals) {
+			a, ok := sig.AltFins[iv]
+			if !ok || a == nil {
+				continue
+			}
+			label := altfins.IntervalLabel(iv)
+			sb.WriteString(fmt.Sprintf("[%s] Short Term Trend: %s, changed from %s\n", label, a.ShortTermTrend, a.ShortTermTrendChange))
+			sb.WriteString(fmt.Sprintf("      Medium Term Trend: %s, changed from %s\n", a.MediumTermTrend, a.MediumTermTrendChange))
+			sb.WriteString(fmt.Sprintf("      Long Term Trend: %s, changed from %s\n", a.LongTermTrend, a.LongTermTrendChange))
+			if a.MACDSignal != "" {
+				sb.WriteString(fmt.Sprintf("      MACD Signal: %s crossover, %d bars ago (%s)\n", a.MACDSignal, a.MACDSignalBarsAgo, a.MACDSignalAgeText))
+			}
+			if a.MACDHistogram != "" {
+				sb.WriteString(fmt.Sprintf("      MACD Histogram: %s\n", a.MACDHistogram))
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	if ind.EnableVergexSignalLabData && len(sig.VergexSignalLab) > 0 {
+		sb.WriteString(fmt.Sprintf("=== %s Vergex Signal Lab ===\n", symbol))
+		sb.WriteString(vergex.FormatSignalLabMarkdown(sig.VergexSignalLab))
+		sb.WriteString("\n")
+	}
+	if ind.EnableVergexHeatmapData && len(sig.VergexHeatmap) > 0 {
+		sb.WriteString(fmt.Sprintf("=== %s Vergex Liquidation Heatmap ===\n", symbol))
+		sb.WriteString(vergex.FormatHeatmapMarkdown(sig.VergexHeatmap))
+		sb.WriteString("\n")
+	}
+
 	return sb.String()
+}
+
+func altfinsIntervalOrder(intervals []string) []string {
+	if len(intervals) == 0 {
+		return []string{"MINUTES15", "DAILY"}
+	}
+	order := []string{"MINUTES15", "HOURLY", "HOURS4", "HOURS12", "DAILY"}
+	rank := map[string]int{}
+	for i, iv := range order {
+		rank[iv] = i
+	}
+	out := make([]string, 0, len(intervals))
+	seen := map[string]bool{}
+	for _, iv := range intervals {
+		if !seen[iv] {
+			seen[iv] = true
+			out = append(out, iv)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return rank[out[i]] < rank[out[j]] })
+	return out
 }
 
 func (e *StrategyEngine) durationOrder(durs []string) []string {
