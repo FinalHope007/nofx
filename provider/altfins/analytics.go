@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -197,7 +198,15 @@ func (c *AnalyticsClient) GetAnalytics(ctx context.Context, id int64, interval s
 
 // do performs a request with a single retry on HTTP 429 (mirrors the
 // OpportunityClient retry behavior).
+//
+// For POST requests the original request body is consumed by the first
+// attempt, so the retry must rebuild the request from a buffered copy (or
+// GetBody) to avoid sending an empty body.
 func (c *AnalyticsClient) do(req *http.Request) (*http.Response, error) {
+	clone, err := cloneRequest(req)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("altfins: request: %w", err)
@@ -205,7 +214,7 @@ func (c *AnalyticsClient) do(req *http.Request) (*http.Response, error) {
 	if resp.StatusCode == http.StatusTooManyRequests {
 		resp.Body.Close()
 		time.Sleep(1500 * time.Millisecond)
-		resp, err = c.http.Do(req)
+		resp, err = c.http.Do(clone)
 		if err != nil {
 			return nil, fmt.Errorf("altfins: retry request: %w", err)
 		}
@@ -215,6 +224,30 @@ func (c *AnalyticsClient) do(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("altfins: HTTP %d", resp.StatusCode)
 	}
 	return resp, nil
+}
+
+// cloneRequest returns a copy of req that can be sent a second time. The body,
+// when present, is buffered so the retry does not reuse a consumed reader.
+func cloneRequest(req *http.Request) (*http.Request, error) {
+	clone := req.Clone(req.Context())
+	if req.Body == nil {
+		return clone, nil
+	}
+	if req.GetBody != nil {
+		body, err := req.GetBody()
+		if err != nil {
+			return nil, fmt.Errorf("altfins: buffer retry body: %w", err)
+		}
+		clone.Body = body
+		return clone, nil
+	}
+	data, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, fmt.Errorf("altfins: buffer retry body: %w", err)
+	}
+	req.Body.Close()
+	clone.Body = io.NopCloser(bytes.NewReader(data))
+	return clone, nil
 }
 
 func normalizeBase(symbol string) string {
@@ -324,6 +357,9 @@ func translateHistogram(v string) string {
 // ageFromRaw converts the raw epoch-ms MACD crossover timestamp into a bar
 // count + human text for the given interval. The API's formatted age is
 // ignored (it is stale).
+//
+// The human text is derived from bars*intervalDuration (not raw elapsed) so it
+// matches the displayed bar count; e.g. 6 bars at 15m renders "~90 min ago".
 func ageFromRaw(rawMs int64, interval string) (int, string) {
 	if rawMs <= 0 {
 		return 0, ""
@@ -337,16 +373,26 @@ func ageFromRaw(rawMs int64, interval string) (int, string) {
 		elapsed = 0
 	}
 	bars := int(elapsed / dur)
-	return bars, "~" + humanizeDuration(elapsed) + " ago"
+	return bars, "~" + humanizeDuration(time.Duration(bars)*dur) + " ago"
 }
 
+// humanizeDuration renders a compact, grammatical age string using the largest
+// unit that divides the duration exactly (so 90 min stays "90 min" rather than
+// rounding to "1 hour", while 8h and 2d use hours/days).
 func humanizeDuration(d time.Duration) string {
 	switch {
-	case d < time.Hour:
-		return fmt.Sprintf("%d min", int(d.Minutes()))
-	case d < 48*time.Hour:
-		return fmt.Sprintf("%d hours", int(d.Hours()))
+	case d >= 24*time.Hour && d%(24*time.Hour) == 0:
+		return pluralize(int(d.Hours()/24), "day", "days")
+	case d >= time.Hour && d%time.Hour == 0:
+		return pluralize(int(d.Hours()), "hour", "hours")
 	default:
-		return fmt.Sprintf("%d days", int(d.Hours()/24))
+		return pluralize(int(d.Minutes()), "min", "min")
 	}
+}
+
+func pluralize(n int, singular, plural string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, singular)
+	}
+	return fmt.Sprintf("%d %s", n, plural)
 }

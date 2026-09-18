@@ -1,8 +1,15 @@
 package altfins
 
 import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"nofx/security"
 )
 
 func TestValidInterval(t *testing.T) {
@@ -96,5 +103,88 @@ func TestTranslateHistogram(t *testing.T) {
 	}
 	if got := translateHistogram("-"); got != "" {
 		t.Fatalf("- -> %q want empty", got)
+	}
+}
+
+func TestHumanizeDuration(t *testing.T) {
+	cases := []struct {
+		in   time.Duration
+		want string
+	}{
+		{0, "0 min"},
+		{15 * time.Minute, "15 min"},
+		{59 * time.Minute, "59 min"},
+		{time.Hour, "1 hour"},
+		{8 * time.Hour, "8 hours"},
+		{47 * time.Hour, "47 hours"},
+		{48 * time.Hour, "2 days"},
+		{72 * time.Hour, "3 days"},
+	}
+	for _, tc := range cases {
+		if got := humanizeDuration(tc.in); got != tc.want {
+			t.Fatalf("humanizeDuration(%v) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestAgeFromRaw(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		name     string
+		rawMs    int64
+		interval string
+		wantBars int
+		wantAge  string
+	}{
+		{"six bars of 15m", now.Add(-103 * time.Minute).UnixMilli(), IntervalMinutes15, 6, "~90 min ago"},
+		{"one hour", now.Add(-61 * time.Minute).UnixMilli(), IntervalHourly, 1, "~1 hour ago"},
+		{"eight hours", now.Add(-8 * time.Hour).UnixMilli(), IntervalHours4, 2, "~8 hours ago"},
+		{"one day", now.Add(-25 * time.Hour).UnixMilli(), IntervalDaily, 1, "~1 day ago"},
+		{"two days", now.Add(-((2*24 + 1) * time.Hour)).UnixMilli(), IntervalDaily, 2, "~2 days ago"},
+		{"zero timestamp", 0, IntervalMinutes15, 0, ""},
+		{"unknown interval", now.UnixMilli(), "HOURS1", 0, ""},
+	}
+	for _, tc := range cases {
+		bars, age := ageFromRaw(tc.rawMs, tc.interval)
+		if bars != tc.wantBars || age != tc.wantAge {
+			t.Fatalf("%s: ageFromRaw = (%d, %q), want (%d, %q)", tc.name, bars, age, tc.wantBars, tc.wantAge)
+		}
+	}
+}
+
+func TestResolveIdentifierRetrySendsPOSTBody(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	attempts := 0
+	var secondBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		body, _ := io.ReadAll(r.Body)
+		if attempts == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		secondBody = body
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"content":[{"securityIdentifierId":1021300}]}`))
+	}))
+	defer srv.Close()
+
+	c := &AnalyticsClient{http: security.SafeHTTPClient(5 * time.Second), baseURL: srv.URL}
+	id, ok, err := c.ResolveIdentifier(context.Background(), "ZECUSDT")
+	if err != nil {
+		t.Fatalf("ResolveIdentifier: %v", err)
+	}
+	if !ok || id != 1021300 {
+		t.Fatalf("expected resolved id 1021300, got id=%d ok=%v", id, ok)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts (429 then 200), got %d", attempts)
+	}
+	var sent map[string]string
+	if err := json.Unmarshal(secondBody, &sent); err != nil {
+		t.Fatalf("retry body is not valid JSON (%q): %v", string(secondBody), err)
+	}
+	if sent["coinFilter"] != "ZEC" {
+		t.Fatalf("retry body coinFilter = %q, want ZEC (body was not resent)", sent["coinFilter"])
 	}
 }
