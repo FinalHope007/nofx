@@ -234,7 +234,7 @@ func GetWithTimeframesWithExchange(symbol string, timeframes []string, primaryTi
 		}
 
 		// Calculate series data for this timeframe (use count from config)
-		seriesData := calculateTimeframeSeries(klines, tf, count)
+		seriesData := calculateTimeframeSeries(klines, tf, count, IndicatorPeriods{})
 		timeframeData[tf] = seriesData
 	}
 

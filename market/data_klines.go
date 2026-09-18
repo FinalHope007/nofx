@@ -174,7 +174,7 @@ func getKlinesFromHyperliquid(symbol, interval string, limit int) ([]Kline, erro
 }
 
 // calculateTimeframeSeries calculates series data for a single timeframe
-func calculateTimeframeSeries(klines []Kline, timeframe string, count int) *TimeframeSeriesData {
+func calculateTimeframeSeries(klines []Kline, timeframe string, count int, periods IndicatorPeriods) *TimeframeSeriesData {
 	if count <= 0 {
 		count = 10 // default
 	}
@@ -192,6 +192,7 @@ func calculateTimeframeSeries(klines []Kline, timeframe string, count int) *Time
 		BOLLUpper:   make([]float64, 0, count),
 		BOLLMiddle:  make([]float64, 0, count),
 		BOLLLower:   make([]float64, 0, count),
+		Periods:     periods,
 	}
 
 	// Get latest N data points based on count from config
@@ -250,10 +251,67 @@ func calculateTimeframeSeries(klines []Kline, timeframe string, count int) *Time
 			data.BOLLMiddle = append(data.BOLLMiddle, middle)
 			data.BOLLLower = append(data.BOLLLower, lower)
 		}
+
+		for _, period := range periods.EMA {
+			if period <= 0 {
+				continue
+			}
+			if i >= period-1 {
+				value := calculateEMA(klines[:i+1], period)
+				switch period {
+				case 9:
+					data.EMA9Values = append(data.EMA9Values, value)
+				case 10:
+					data.EMA10Values = append(data.EMA10Values, value)
+				case 200:
+					data.EMA200Values = append(data.EMA200Values, value)
+				}
+			}
+		}
+
+		for _, period := range periods.RSI {
+			if period <= 0 {
+				continue
+			}
+			if i >= period {
+				value := calculateRSI(klines[:i+1], period)
+				if period == 21 {
+					data.RSI21Values = append(data.RSI21Values, value)
+				}
+			}
+		}
+
+		for _, period := range periods.BOLL {
+			if period <= 0 {
+				continue
+			}
+			if i >= period-1 {
+				upper, middle, lower := calculateBOLL(klines[:i+1], period, 2.0)
+				switch period {
+				case 10:
+					data.BOLL10Upper = append(data.BOLL10Upper, upper)
+					data.BOLL10Middle = append(data.BOLL10Middle, middle)
+					data.BOLL10Lower = append(data.BOLL10Lower, lower)
+				case 50:
+					data.BOLL50Upper = append(data.BOLL50Upper, upper)
+					data.BOLL50Middle = append(data.BOLL50Middle, middle)
+					data.BOLL50Lower = append(data.BOLL50Lower, lower)
+				}
+			}
+		}
 	}
 
 	// Calculate ATR14
 	data.ATR14 = calculateATR(klines, 14)
+
+	for _, period := range periods.ATR {
+		switch period {
+		case 7:
+			data.ATR7 = calculateATR(klines, 7)
+		case 21:
+			data.ATR21 = calculateATR(klines, 21)
+		}
+	}
 
 	return data
 }
