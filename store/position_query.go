@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"math"
+	"nofx/market"
 	"strings"
 	"time"
 )
@@ -216,7 +217,7 @@ func (s *Store) GetRecentTradesWithReason(traderID string, limit int) ([]RecentT
 					default:
 						continue
 					}
-					key := d.Symbol + "|" + side
+					key := market.Normalize(d.Symbol) + "|" + side
 					successfulLLMCloses[key] = append(successfulLLMCloses[key], rec.Timestamp.UTC().UnixMilli())
 				}
 			}
@@ -258,7 +259,7 @@ func (s *Store) GetRecentTradesWithReason(traderID string, limit int) ([]RecentT
 
 func classifyClose(pos TraderPosition, successfulLLMCloses map[string][]int64, tol float64) string {
 	side := strings.ToLower(pos.Side)
-	symbol := pos.Symbol
+	symbol := market.Normalize(pos.Symbol)
 	for _, et := range successfulLLMCloses[symbol+"|"+side] {
 		if abs64(et-pos.ExitTime) <= 15*60*1000 {
 			return "llm"

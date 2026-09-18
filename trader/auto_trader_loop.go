@@ -539,6 +539,7 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		// Priority 1: Get from database (trader_positions table) - most accurate
 		if at.store != nil {
 			if dbPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, symbol, side); err == nil && dbPos != nil {
+				at.reconcilePendingSLTP(dbPos, symbol, side)
 				if dbPos.EntryTime > 0 {
 					updateTime = dbPos.EntryTime
 				}
@@ -590,6 +591,13 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 			delete(at.positionFirstSeenTime, key)
 		}
 	}
+	at.pendingSLTPMutex.Lock()
+	for key := range at.pendingSLTP {
+		if !currentPositionKeys[key] {
+			delete(at.pendingSLTP, key)
+		}
+	}
+	at.pendingSLTPMutex.Unlock()
 
 	// 3. Use strategy engine to get candidate coins (must have strategy engine)
 	var candidateCoins []kernel.CandidateCoin

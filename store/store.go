@@ -110,12 +110,6 @@ func NewFromGorm(gdb *gorm.DB) (*Store, error) {
 	return &Store{gdb: gdb, db: sqlDB}, nil
 }
 
-// NewFromDB creates Store from existing database connection (legacy)
-// Deprecated: Use NewFromGorm instead
-func NewFromDB(db *sql.DB) *Store {
-	return &Store{db: db}
-}
-
 // initTables initializes all database tables using GORM AutoMigrate
 func (s *Store) initTables() error {
 	// Create system_config table (GORM handles this via raw SQL for simplicity)

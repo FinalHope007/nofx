@@ -201,6 +201,33 @@ func TestGetRecentTradesWithReasonFailedCycleFallsToSL(t *testing.T) {
 	}
 }
 
+func TestGetRecentTradesWithReasonClassifiesVariantSymbolLLMClose(t *testing.T) {
+	st := newClassifyTestStore(t)
+	now := time.Now().UTC()
+	closeRec := &DecisionRecord{
+		TraderID: "t1", CycleNumber: 2, Timestamp: now,
+		Success:   true,
+		Decisions: []DecisionAction{{Action: "close_long", Symbol: "QNT-USDT-SWAP", Success: true}},
+	}
+	if err := st.Decision().LogDecision(closeRec); err != nil {
+		t.Fatalf("log: %v", err)
+	}
+	pos := &TraderPosition{
+		TraderID: "t1", Symbol: "QNTUSDT", Side: "LONG",
+		Quantity: 0, EntryPrice: 10, ExitPrice: 10.5, Leverage: 5,
+		EntryTime: now.Add(-30 * time.Minute).UnixMilli(),
+		ExitTime:  now.UnixMilli(), RealizedPnL: 0, Status: "CLOSED",
+	}
+	seedClosedPosition(t, st, pos)
+	trades, err := st.GetRecentTradesWithReason("t1", 15)
+	if err != nil || len(trades) != 1 {
+		t.Fatalf("trades=%v err=%v", trades, err)
+	}
+	if trades[0].CloseReason != "llm" {
+		t.Fatalf("reason=%q want llm", trades[0].CloseReason)
+	}
+}
+
 func TestGetRecordsInRange(t *testing.T) {
 	st := newClassifyTestStore(t)
 	now := time.Now().UTC()

@@ -163,6 +163,13 @@ type AutoTraderConfig struct {
 	StrategyConfigRaw string                // Raw strategy config JSON from DB, used to detect live edits
 }
 
+// pendingSLTP holds stop loss / take profit values recorded at order time that
+// still need to be persisted once the position row exists in the database.
+type pendingSLTP struct {
+	StopLoss   float64
+	TakeProfit float64
+}
+
 // AutoTrader automatic trader
 type AutoTrader struct {
 	id                    string // Trader unique identifier
@@ -184,26 +191,28 @@ type AutoTrader struct {
 	lastResetTime         time.Time
 	stopUntil             time.Time
 	isRunning             bool
-	isRunningMutex        sync.RWMutex       // Mutex to protect isRunning flag
-	startTime             time.Time          // System start time
-	callCount             int                // AI call count
-	positionFirstSeenTime map[string]int64   // Position first seen time (symbol_side -> timestamp in milliseconds)
-	stopMonitorCh         chan struct{}      // Used to stop monitoring goroutine
-	monitorWg             sync.WaitGroup     // Used to wait for monitoring goroutine to finish
-	peakPnLCache          map[string]float64 // Peak profit cache (symbol -> peak P&L percentage)
-	peakPnLCacheMutex     sync.RWMutex       // Cache read-write lock
-	lastBalanceSyncTime   time.Time          // Last balance sync time
-	userID                string             // User ID
-	gridState             *GridState         // Grid trading state (only used when StrategyType == "grid_trading")
-	claw402WalletAddr     string             // Claw402 wallet address (derived from private key at start)
-	consecutiveAIFailures int                // Consecutive AI call failures
-	prefetchTimer         *time.Timer        // Pre-cycle Binance prefetch timer (nil when not scheduled)
-	runtimeHealthMu       sync.RWMutex       // Guards safe mode + AI wallet health (loop writes, API reads)
-	safeMode              bool               // Safe mode: no new positions, protect existing ones
-	safeModeReason        string             // Why safe mode was activated
-	aiWalletStatus        string             // "ok"|"low"|"empty"|"unknown" — see runtime_health.go
-	aiWalletBalanceUSDC   float64            // Last observed Base USDC balance of the claw402 wallet
-	aiWalletCheckedAt     time.Time          // When the balance was last observed
+	isRunningMutex        sync.RWMutex           // Mutex to protect isRunning flag
+	startTime             time.Time              // System start time
+	callCount             int                    // AI call count
+	positionFirstSeenTime map[string]int64       // Position first seen time (symbol_side -> timestamp in milliseconds)
+	pendingSLTP           map[string]pendingSLTP // Intended SL/TP awaiting an OrderSync-created position row (symbol_side -> SL/TP)
+	pendingSLTPMutex      sync.Mutex             // Guards pendingSLTP
+	stopMonitorCh         chan struct{}          // Used to stop monitoring goroutine
+	monitorWg             sync.WaitGroup         // Used to wait for monitoring goroutine to finish
+	peakPnLCache          map[string]float64     // Peak profit cache (symbol -> peak P&L percentage)
+	peakPnLCacheMutex     sync.RWMutex           // Cache read-write lock
+	lastBalanceSyncTime   time.Time              // Last balance sync time
+	userID                string                 // User ID
+	gridState             *GridState             // Grid trading state (only used when StrategyType == "grid_trading")
+	claw402WalletAddr     string                 // Claw402 wallet address (derived from private key at start)
+	consecutiveAIFailures int                    // Consecutive AI call failures
+	prefetchTimer         *time.Timer            // Pre-cycle Binance prefetch timer (nil when not scheduled)
+	runtimeHealthMu       sync.RWMutex           // Guards safe mode + AI wallet health (loop writes, API reads)
+	safeMode              bool                   // Safe mode: no new positions, protect existing ones
+	safeModeReason        string                 // Why safe mode was activated
+	aiWalletStatus        string                 // "ok"|"low"|"empty"|"unknown" — see runtime_health.go
+	aiWalletBalanceUSDC   float64                // Last observed Base USDC balance of the claw402 wallet
+	aiWalletCheckedAt     time.Time              // When the balance was last observed
 }
 
 // NewAutoTrader creates an automatic trader
@@ -408,6 +417,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		callCount:             0,
 		isRunning:             false,
 		positionFirstSeenTime: make(map[string]int64),
+		pendingSLTP:           make(map[string]pendingSLTP),
 		stopMonitorCh:         make(chan struct{}),
 		monitorWg:             sync.WaitGroup{},
 		peakPnLCache:          make(map[string]float64),

@@ -149,6 +149,10 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 	posKey := decision.Symbol + "_long"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
 
+	// Record intended SL/TP; the position row may not exist yet on OrderSync
+	// exchanges, so this is applied once OrderSync creates the row.
+	at.recordPendingSLTP(market.Normalize(decision.Symbol), "long", decision.StopLoss, decision.TakeProfit)
+
 	// Set stop loss and take profit
 	if err := at.trader.SetStopLoss(exchangeSymbol, "LONG", quantity, decision.StopLoss); err != nil {
 		logger.Infof("  ⚠ Failed to set stop loss: %v", err)
@@ -273,6 +277,10 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 	posKey := decision.Symbol + "_short"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
 
+	// Record intended SL/TP; the position row may not exist yet on OrderSync
+	// exchanges, so this is applied once OrderSync creates the row.
+	at.recordPendingSLTP(market.Normalize(decision.Symbol), "short", decision.StopLoss, decision.TakeProfit)
+
 	// Set stop loss and take profit
 	if err := at.trader.SetStopLoss(exchangeSymbol, "SHORT", quantity, decision.StopLoss); err != nil {
 		logger.Infof("  ⚠ Failed to set stop loss: %v", err)
@@ -288,6 +296,45 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 	}
 
 	return nil
+}
+
+// recordPendingSLTP stores the intended SL/TP for a symbol/side (side is
+// lowercase) so it can be persisted once the position row is created by
+// OrderSync, which runs asynchronously on production exchanges.
+func (at *AutoTrader) recordPendingSLTP(symbol, side string, stopLoss, takeProfit float64) {
+	if at.pendingSLTP == nil {
+		return
+	}
+	at.pendingSLTPMutex.Lock()
+	at.pendingSLTP[symbol+"_"+side] = pendingSLTP{StopLoss: stopLoss, TakeProfit: takeProfit}
+	at.pendingSLTPMutex.Unlock()
+}
+
+// reconcilePendingSLTP persists a pending SL/TP onto the given open position
+// row. It applies the pending values when the row has none (the OrderSync
+// creation path sets SL/TP = 0), and clears any pending entry either way.
+func (at *AutoTrader) reconcilePendingSLTP(dbPos *store.TraderPosition, symbol, side string) {
+	if at.pendingSLTP == nil || dbPos == nil {
+		return
+	}
+	key := symbol + "_" + side
+	at.pendingSLTPMutex.Lock()
+	pending, ok := at.pendingSLTP[key]
+	if ok {
+		delete(at.pendingSLTP, key)
+	}
+	at.pendingSLTPMutex.Unlock()
+	if !ok {
+		return
+	}
+	if dbPos.StopLoss == 0 && dbPos.TakeProfit == 0 {
+		if err := at.store.Position().UpdatePositionSLTP(dbPos.ID, pending.StopLoss, pending.TakeProfit); err != nil {
+			logger.Infof("  ⚠ Failed to persist pending SL/TP: %v", err)
+		} else {
+			dbPos.StopLoss = pending.StopLoss
+			dbPos.TakeProfit = pending.TakeProfit
+		}
+	}
 }
 
 // executeCloseLongWithRecord executes close long position and records detailed information
