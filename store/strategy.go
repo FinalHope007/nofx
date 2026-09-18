@@ -1277,7 +1277,8 @@ Open a position only when Claw402 Signal Lab, cost/liquidation heatmap and raw c
 1. Check existing positions first: decide take profit, stop loss or hold.
 2. Pull this cycle's candidates from the Claw402 board, and for each candidate read Claw402 Ranking, Signal Lab and Cost/Liquidation Heatmap.
 3. Use raw candles to confirm entry, stop loss and take profit.
-4. Output concise reasoning and strict JSON.`,
+4. Output concise reasoning and strict JSON.
+5. Your recorded SL/TP are reference levels, not hard constraints — you may take profit or cut the loss early if the thesis is invalidated.`,
 		}
 	} else {
 		config.PromptSections = PromptSectionsConfig{
@@ -1297,7 +1298,8 @@ Open only when Claw402 Signal Lab, cost/liquidation heatmap and raw candles broa
 1. Check current positions first: take profit, stop loss or hold.
 2. Pull this cycle's Claw402 board and read Claw402 Ranking, Signal Lab and Cost/Liquidation Heatmap for each candidate.
 3. Use raw candles to confirm entry, stop and target.
-4. Output concise reasoning and strict JSON.`,
+4. Output concise reasoning and strict JSON.
+5. Your recorded SL/TP are reference levels, not hard constraints — you may take profit or cut the loss early if the thesis is invalidated.`,
 		}
 	}
 

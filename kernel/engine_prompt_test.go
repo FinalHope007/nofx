@@ -120,6 +120,15 @@ func TestBuildSystemPromptDoesNotForceLongOnlyForSingleXYZ(t *testing.T) {
 	}
 }
 
+func TestSystemPromptIncludesSLTPReferenceGuidance(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	e := NewStrategyEngine(cfg)
+	out := e.BuildSystemPrompt(1000, "balanced")
+	if !strings.Contains(out, "reference levels") {
+		t.Fatalf("missing SL/TP reference guidance:\n%s", out)
+	}
+}
+
 func TestEnginePerCoinSignals_StoreAndGet(t *testing.T) {
 	cfg := store.GetDefaultStrategyConfig("en")
 	e := NewStrategyEngine(&cfg)

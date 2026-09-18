@@ -141,12 +141,14 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("# 📋 Decision Process\n\n")
 		sb.WriteString("1. Check positions → take profit / stop loss?\n")
 		sb.WriteString("2. Scan candidates + multi-timeframe → are there strong signals?\n")
-		sb.WriteString("3. Write chain of thought first, then output structured JSON\n\n")
+		sb.WriteString("3. Write chain of thought first, then output structured JSON\n")
+		sb.WriteString("4. Your recorded SL/TP are reference levels, not hard constraints — you may take profit or cut the loss early if the thesis is invalidated.\n\n")
 	} else {
 		sb.WriteString("# 📋 Decision Process\n\n")
 		sb.WriteString("1. Check positions → take profit / stop loss?\n")
 		sb.WriteString("2. Scan candidates + multi-timeframe → are there strong signals?\n")
-		sb.WriteString("3. Write chain of thought first, then output structured JSON\n\n")
+		sb.WriteString("3. Write chain of thought first, then output structured JSON\n")
+		sb.WriteString("4. Your recorded SL/TP are reference levels, not hard constraints — you may take profit or cut the loss early if the thesis is invalidated.\n\n")
 	}
 
 	// 7. Output format — schema spec stays in English (this is a parser
