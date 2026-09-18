@@ -654,8 +654,8 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 
 	// 7. Add recent closed trades (if store is available)
 	if at.store != nil {
-		// Get recent 10 closed trades for AI context
-		recentTrades, err := at.store.Position().GetRecentTrades(at.id, 10)
+		// Get recent 15 closed trades for AI context
+		recentTrades, err := at.store.GetRecentTradesWithReason(at.id, 15)
 		if err != nil {
 			at.logWarnf("⚠️ Failed to get recent trades: %v", err)
 		} else {
@@ -681,6 +681,7 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 					EntryTime:    entryTimeStr,
 					ExitTime:     exitTimeStr,
 					HoldDuration: trade.HoldDuration,
+					CloseReason:  trade.CloseReason,
 				})
 			}
 		}

@@ -713,3 +713,21 @@ func TestFormatMarketDataSigFigsLowPriceCoin(t *testing.T) {
 		t.Fatalf("sub-cent OHLC close lost precision:\n%s", out)
 	}
 }
+
+func TestRecentOrdersPromptShowsCloseReasonTagsAndTally(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	e := NewStrategyEngine(cfg)
+	ctx := &Context{
+		RecentOrders: []RecentOrder{
+			{Symbol: "BRUSDT", Side: "long", RealizedPnL: -1, PnLPct: -5, CloseReason: "sl", EntryTime: "09-17 10:00 UTC", ExitTime: "09-17 10:30 UTC", HoldDuration: "30m"},
+			{Symbol: "ZECUSDT", Side: "long", RealizedPnL: 2, PnLPct: 5, CloseReason: "tp", EntryTime: "09-17 11:00 UTC", ExitTime: "09-17 11:20 UTC", HoldDuration: "20m"},
+			{Symbol: "HBARUSDT", Side: "long", RealizedPnL: 0.1, PnLPct: 1, CloseReason: "llm", EntryTime: "09-17 11:00 UTC", ExitTime: "09-17 11:30 UTC", HoldDuration: "30m"},
+		},
+	}
+	out := e.BuildUserPrompt(ctx)
+	for _, want := range []string{"[SL hit]", "[TP hit]", "[LLM close]", "Recent closes:"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+}

@@ -804,16 +804,22 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	// Recently completed orders (placed before positions to ensure visibility)
 	if len(ctx.RecentOrders) > 0 {
 		sb.WriteString("## Recent Completed Trades\n")
+		counts := map[string]int{}
+		for _, o := range ctx.RecentOrders {
+			counts[o.CloseReason]++
+		}
+		sb.WriteString(fmt.Sprintf("Recent closes: %d TP, %d SL, %d LLM decisions\n\n", counts["tp"], counts["sl"], counts["llm"]))
 		for i, order := range ctx.RecentOrders {
 			resultStr := "Profit"
 			if order.RealizedPnL < 0 {
 				resultStr = "Loss"
 			}
-			sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %s Exit %s | %s: %+.2f USDT (%+.2f%%) | %s→%s (%s)\n",
+			tag := map[string]string{"llm": "[LLM close]", "tp": "[TP hit]", "sl": "[SL hit]", "exchange": "[exchange]"}[order.CloseReason]
+			sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %s Exit %s | %s: %+.2f USDT (%+.2f%%) | %s→%s (%s) %s\n",
 				i+1, order.Symbol, order.Side,
 				market.FormatPriceSigFigs(order.EntryPrice), market.FormatPriceSigFigs(order.ExitPrice),
 				resultStr, order.RealizedPnL, order.PnLPct,
-				order.EntryTime, order.ExitTime, order.HoldDuration))
+				order.EntryTime, order.ExitTime, order.HoldDuration, tag))
 		}
 		sb.WriteString("\n")
 	}

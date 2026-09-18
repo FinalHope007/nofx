@@ -93,6 +93,7 @@ type RecentOrder struct {
 	EntryTime    string  `json:"entry_time"`    // Entry time
 	ExitTime     string  `json:"exit_time"`     // Exit time
 	HoldDuration string  `json:"hold_duration"` // Hold duration, e.g. "2h30m"
+	CloseReason  string  `json:"close_reason"`  // Close reason: llm/tp/sl/exchange
 }
 
 // Context trading context (complete information passed to AI)
