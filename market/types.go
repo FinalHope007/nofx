@@ -29,6 +29,14 @@ type KlineBar struct {
 	Volume float64 `json:"volume"` // Volume
 }
 
+// IndicatorPeriods selected indicator periods
+type IndicatorPeriods struct {
+	EMA  []int `json:"ema,omitempty"`
+	RSI  []int `json:"rsi,omitempty"`
+	ATR  []int `json:"atr,omitempty"`
+	BOLL []int `json:"boll,omitempty"`
+}
+
 // TimeframeSeriesData series data for a single timeframe
 type TimeframeSeriesData struct {
 	Timeframe   string     `json:"timeframe"`    // Timeframe identifier, e.g. "5m", "15m", "1h"
@@ -45,6 +53,23 @@ type TimeframeSeriesData struct {
 	BOLLUpper  []float64 `json:"boll_upper"`  // Upper band
 	BOLLMiddle []float64 `json:"boll_middle"` // Middle band (SMA)
 	BOLLLower  []float64 `json:"boll_lower"`  // Lower band
+
+	Periods IndicatorPeriods `json:"periods,omitempty"`
+
+	EMA9Values   []float64 `json:"ema9_values,omitempty"`
+	EMA10Values  []float64 `json:"ema10_values,omitempty"`
+	EMA200Values []float64 `json:"ema200_values,omitempty"`
+	RSI21Values  []float64 `json:"rsi21_values,omitempty"`
+
+	ATR7  float64 `json:"atr7,omitempty"`
+	ATR21 float64 `json:"atr21,omitempty"`
+
+	BOLL10Upper  []float64 `json:"boll10_upper,omitempty"`
+	BOLL10Middle []float64 `json:"boll10_middle,omitempty"`
+	BOLL10Lower  []float64 `json:"boll10_lower,omitempty"`
+	BOLL50Upper  []float64 `json:"boll50_upper,omitempty"`
+	BOLL50Middle []float64 `json:"boll50_middle,omitempty"`
+	BOLL50Lower  []float64 `json:"boll50_lower,omitempty"`
 }
 
 // OIData Open Interest data
