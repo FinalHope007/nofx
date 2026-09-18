@@ -78,6 +78,9 @@ export function EditorStepPage() {
     useState(3.0)
   const [saving, setSaving] = useState(false)
 
+  // A vergex candidate-pool scope already fetches the Signal Lab / Heatmap
+  // feeds via the vergex_signal path, so the per-coin toggles are inert there.
+  const isVergexScope = scope?.source_type === 'vergex'
   const initialSources = defaultDataSources(scope)
   const [enableAI500Data, setEnableAI500Data] = useState(
     initialSources.enableAI500Data
@@ -911,22 +914,30 @@ export function EditorStepPage() {
             <span className="text-sm text-nofx-text-muted">
               Vergex per-coin data
             </span>
-            <div className="mt-1 flex flex-wrap gap-2">
-              <ToggleChip
-                label="Vergex Signal Lab"
-                active={enableVergexSignalLabData}
-                onClick={() =>
-                  setEnableVergexSignalLabData(!enableVergexSignalLabData)
-                }
-              />
-              <ToggleChip
-                label="Vergex Liquidation Heatmap"
-                active={enableVergexHeatmapData}
-                onClick={() =>
-                  setEnableVergexHeatmapData(!enableVergexHeatmapData)
-                }
-              />
-            </div>
+            {isVergexScope ? (
+              <p className="mt-1 text-[11px] leading-snug text-nofx-text-muted">
+                This scope already fetches the Vergex Signal Lab and Liquidation
+                Heatmap feeds for every candidate, so these per-coin toggles are
+                not needed.
+              </p>
+            ) : (
+              <div className="mt-1 flex flex-wrap gap-2">
+                <ToggleChip
+                  label="Vergex Signal Lab"
+                  active={enableVergexSignalLabData}
+                  onClick={() =>
+                    setEnableVergexSignalLabData(!enableVergexSignalLabData)
+                  }
+                />
+                <ToggleChip
+                  label="Vergex Liquidation Heatmap"
+                  active={enableVergexHeatmapData}
+                  onClick={() =>
+                    setEnableVergexHeatmapData(!enableVergexHeatmapData)
+                  }
+                />
+              </div>
+            )}
           </div>
 
           <hr className="my-4 border-[rgba(26,24,19,0.14)]" />

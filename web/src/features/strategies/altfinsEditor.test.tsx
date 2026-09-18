@@ -13,4 +13,8 @@ describe('EditorStepPage AltFins controls', () => {
     expect(src).toContain('Vergex Signal Lab')
     expect(src).toContain('Vergex Liquidation Heatmap')
   })
+  it('hides vergex per-coin toggles for vergex scopes', () => {
+    expect(src).toContain("const isVergexScope = scope?.source_type === 'vergex'")
+    expect(src).toContain('isVergexScope ?')
+  })
 })

@@ -839,8 +839,9 @@ func sortDecisionsByPriority(decisions []kernel.Decision) []kernel.Decision {
 
 // prefetchRequestsPerCoin returns the number of data-source requests the
 // pre-cycle prefetch will issue per coin, accounting for Binance technical,
-// Binance sentiment, and AltFins detail fetches. AltFins adds one resolve
-// call per coin on top of its per-interval detail requests.
+// Binance sentiment, AltFins, and vergex per-coin detail fetches. AltFins adds
+// one resolve call per coin on top of its per-interval detail requests; vergex
+// per-coin adds one request per enabled feed.
 func prefetchRequestsPerCoin(cfg *store.StrategyConfig) int {
 	if cfg == nil {
 		return 0
@@ -862,6 +863,14 @@ func prefetchRequestsPerCoin(cfg *store.StrategyConfig) int {
 			ivs = []string{"MINUTES15", "DAILY"}
 		}
 		requestsPerCoin += len(ivs) + 1 // +1 resolve call per coin
+	}
+	if cfg.CoinSource.SourceType != "vergex_signal" {
+		if cfg.Indicators.EnableVergexSignalLabData {
+			requestsPerCoin++
+		}
+		if cfg.Indicators.EnableVergexHeatmapData {
+			requestsPerCoin++
+		}
 	}
 	return requestsPerCoin
 }
@@ -942,7 +951,14 @@ func (at *AutoTrader) scheduleBinancePrefetch() {
 
 		if cfg.Indicators.EnableAltFinsData {
 			runRateLimitedPrefetch(symbols, delayPerRequest, func(sym string) {
-				at.strategyEngine.PrefetchAltFinsDetails(context.Background(), []string{sym})
+				at.strategyEngine.PrefetchAltFinsDetails(context.Background(), []string{sym}, delayPerRequest)
+			})
+		}
+
+		if cfg.CoinSource.SourceType != "vergex_signal" &&
+			(cfg.Indicators.EnableVergexSignalLabData || cfg.Indicators.EnableVergexHeatmapData) {
+			runRateLimitedPrefetch(symbols, delayPerRequest, func(sym string) {
+				at.strategyEngine.PrefetchVergexDetails(context.Background(), []string{sym})
 			})
 		}
 
