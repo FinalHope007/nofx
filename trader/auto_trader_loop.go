@@ -535,12 +535,15 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		currentPositionKeys[posKey] = true
 
 		var updateTime int64
+		var sl, tp float64
 		// Priority 1: Get from database (trader_positions table) - most accurate
 		if at.store != nil {
 			if dbPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, symbol, side); err == nil && dbPos != nil {
 				if dbPos.EntryTime > 0 {
 					updateTime = dbPos.EntryTime
 				}
+				sl = dbPos.StopLoss
+				tp = dbPos.TakeProfit
 			}
 		}
 		// Priority 2: Get from exchange API (Bybit: createdTime, OKX: createdTime)
@@ -575,6 +578,9 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 			LiquidationPrice: liquidationPrice,
 			MarginUsed:       marginUsed,
 			UpdateTime:       updateTime,
+			EntryTime:        updateTime,
+			StopLoss:         sl,
+			TakeProfit:       tp,
 		})
 	}
 

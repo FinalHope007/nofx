@@ -39,6 +39,9 @@ type PositionInfo struct {
 	LiquidationPrice float64 `json:"liquidation_price"`
 	MarginUsed       float64 `json:"margin_used"`
 	UpdateTime       int64   `json:"update_time"` // Position update timestamp (milliseconds)
+	EntryTime        int64   `json:"entry_time"`
+	StopLoss         float64 `json:"stop_loss"`
+	TakeProfit       float64 `json:"take_profit"`
 }
 
 // AccountInfo account information
