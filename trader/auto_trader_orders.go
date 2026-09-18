@@ -152,6 +152,12 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 	// Set stop loss and take profit
 	if err := at.trader.SetStopLoss(exchangeSymbol, "LONG", quantity, decision.StopLoss); err != nil {
 		logger.Infof("  ⚠ Failed to set stop loss: %v", err)
+	} else if at.store != nil {
+		if openPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, market.Normalize(exchangeSymbol), "LONG"); err == nil && openPos != nil {
+			if err := at.store.Position().UpdatePositionSLTP(openPos.ID, decision.StopLoss, decision.TakeProfit); err != nil {
+				logger.Infof("  ⚠ Failed to persist SL/TP: %v", err)
+			}
+		}
 	}
 	if err := at.trader.SetTakeProfit(exchangeSymbol, "LONG", quantity, decision.TakeProfit); err != nil {
 		logger.Infof("  ⚠ Failed to set take profit: %v", err)
@@ -270,6 +276,12 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 	// Set stop loss and take profit
 	if err := at.trader.SetStopLoss(exchangeSymbol, "SHORT", quantity, decision.StopLoss); err != nil {
 		logger.Infof("  ⚠ Failed to set stop loss: %v", err)
+	} else if at.store != nil {
+		if openPos, err := at.store.Position().GetOpenPositionBySymbol(at.id, market.Normalize(exchangeSymbol), "SHORT"); err == nil && openPos != nil {
+			if err := at.store.Position().UpdatePositionSLTP(openPos.ID, decision.StopLoss, decision.TakeProfit); err != nil {
+				logger.Infof("  ⚠ Failed to persist SL/TP: %v", err)
+			}
+		}
 	}
 	if err := at.trader.SetTakeProfit(exchangeSymbol, "SHORT", quantity, decision.TakeProfit); err != nil {
 		logger.Infof("  ⚠ Failed to set take profit: %v", err)
