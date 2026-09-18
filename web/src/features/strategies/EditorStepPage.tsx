@@ -24,7 +24,9 @@ const BOLL_PERIODS = [10, 20, 50]
 const RANKING_DURATIONS = ['1h', '4h', '24h']
 
 function toggleNumberList(current: number[], n: number): number[] {
-  return current.includes(n) ? current.filter((x) => x !== n) : [...current, n].sort((a, b) => a - b)
+  return current.includes(n)
+    ? current.filter((x) => x !== n)
+    : [...current, n].sort((a, b) => a - b)
 }
 
 export function EditorStepPage() {
@@ -59,15 +61,13 @@ export function EditorStepPage() {
   const [maxMarginUsage, setMaxMarginUsage] = useState(1.0)
   const [minConfidence, setMinConfidence] = useState(78)
   const [enableOILiquidityFilter, setEnableOILiquidityFilter] = useState(true)
-  const [oiLiquidityFilterMinUSDT, setOILiquidityFilterMinUSDT] = useState(
-    15000000
-  )
+  const [oiLiquidityFilterMinUSDT, setOILiquidityFilterMinUSDT] =
+    useState(15000000)
   const [maxOpensPerHour, setMaxOpensPerHour] = useState(3)
   const [maxOpensPerCycle, setMaxOpensPerCycle] = useState(2)
   const [minHoldDurationMin, setMinHoldDurationMin] = useState(90)
-  const [noiseCloseHoldDurationMin, setNoiseCloseHoldDurationMin] = useState(
-    180
-  )
+  const [noiseCloseHoldDurationMin, setNoiseCloseHoldDurationMin] =
+    useState(180)
   const [reentryCooldownMin, setReentryCooldownMin] = useState(240)
   const [earlyCloseStopLossBypassPct, setEarlyCloseStopLossBypassPct] =
     useState(-3.0)
@@ -101,9 +101,20 @@ export function EditorStepPage() {
   const [rsiPeriods, setRsiPeriods] = useState<number[]>([7, 14])
   const [atrPeriods, setAtrPeriods] = useState<number[]>([14])
   const [bollPeriods, setBollPeriods] = useState<number[]>([20])
-  const [enableBinanceTechnicalData, setEnableBinanceTechnicalData] = useState(false)
-  const [enableBinanceSentimentData, setEnableBinanceSentimentData] = useState(false)
-  const [binanceTechnicalIntervals, setBinanceTechnicalIntervals] = useState<('1h' | '24h')[]>(['1h'])
+  const [enableBinanceTechnicalData, setEnableBinanceTechnicalData] =
+    useState(false)
+  const [enableBinanceSentimentData, setEnableBinanceSentimentData] =
+    useState(false)
+  const [binanceTechnicalIntervals, setBinanceTechnicalIntervals] = useState<
+    ('1h' | '24h')[]
+  >(['1h'])
+  const [enableAltFinsData, setEnableAltFinsData] = useState(false)
+  const [altfinsIntervals, setAltfinsIntervals] = useState<
+    ('MINUTES15' | 'HOURLY' | 'HOURS4' | 'HOURS12' | 'DAILY')[]
+  >(['MINUTES15', 'DAILY'])
+  const [enableVergexSignalLabData, setEnableVergexSignalLabData] =
+    useState(false)
+  const [enableVergexHeatmapData, setEnableVergexHeatmapData] = useState(false)
   const [primaryCount, setPrimaryCount] = useState(30)
   const [longerTimeframe, setLongerTimeframe] = useState('')
   const [longerCount, setLongerCount] = useState(0)
@@ -151,7 +162,9 @@ export function EditorStepPage() {
         setMaxMarginUsage(rc?.max_margin_usage ?? 1.0)
         setMinConfidence(rc?.min_confidence ?? 78)
         setEnableOILiquidityFilter(rc?.enable_oi_liquidity_filter ?? true)
-        setOILiquidityFilterMinUSDT(rc?.oi_liquidity_filter_min_usdt ?? 15000000)
+        setOILiquidityFilterMinUSDT(
+          rc?.oi_liquidity_filter_min_usdt ?? 15000000
+        )
         setMaxOpensPerHour(th?.max_opens_per_hour ?? 3)
         setMaxOpensPerCycle(th?.max_opens_per_cycle ?? 2)
         setMinHoldDurationMin(th?.min_hold_duration_min ?? 90)
@@ -197,9 +210,27 @@ export function EditorStepPage() {
         setRsiPeriods(ind?.rsi_periods?.length ? ind.rsi_periods : [7, 14])
         setAtrPeriods(ind?.atr_periods?.length ? ind.atr_periods : [14])
         setBollPeriods(ind?.boll_periods?.length ? ind.boll_periods : [20])
-        setEnableBinanceTechnicalData(ind?.enable_binance_technical_data ?? false)
-        setEnableBinanceSentimentData(ind?.enable_binance_sentiment_data ?? false)
-        setBinanceTechnicalIntervals(ind?.binance_technical_intervals?.length ? ind.binance_technical_intervals : ['1h'])
+        setEnableBinanceTechnicalData(
+          ind?.enable_binance_technical_data ?? false
+        )
+        setEnableBinanceSentimentData(
+          ind?.enable_binance_sentiment_data ?? false
+        )
+        setBinanceTechnicalIntervals(
+          ind?.binance_technical_intervals?.length
+            ? ind.binance_technical_intervals
+            : ['1h']
+        )
+        setEnableAltFinsData(ind?.enable_altfins_data ?? false)
+        setAltfinsIntervals(
+          ind?.altfins_intervals?.length
+            ? ind.altfins_intervals
+            : ['MINUTES15', 'DAILY']
+        )
+        setEnableVergexSignalLabData(
+          ind?.enable_vergex_signal_lab_data ?? false
+        )
+        setEnableVergexHeatmapData(ind?.enable_vergex_heatmap_data ?? false)
         setPrimaryCount(ind?.klines.primary_count ?? 30)
         setLongerTimeframe(ind?.klines.longer_timeframe ?? '')
         setLongerCount(ind?.klines.longer_count ?? 0)
@@ -324,6 +355,10 @@ export function EditorStepPage() {
         enableBinanceTechnicalData,
         enableBinanceSentimentData,
         binanceTechnicalIntervals,
+        enableAltFinsData,
+        altfinsIntervals,
+        enableVergexSignalLabData,
+        enableVergexHeatmapData,
         primaryCount,
         longerTimeframe,
         longerCount,
@@ -556,12 +591,36 @@ export function EditorStepPage() {
             Basic indicators
           </legend>
           <div className="mb-4 flex flex-wrap gap-2">
-            <ToggleChip label="EMA" active={enableEma} onClick={() => setEnableEma(!enableEma)} />
-            <ToggleChip label="MACD" active={enableMacd} onClick={() => setEnableMacd(!enableMacd)} />
-            <ToggleChip label="RSI" active={enableRsi} onClick={() => setEnableRsi(!enableRsi)} />
-            <ToggleChip label="ATR" active={enableAtr} onClick={() => setEnableAtr(!enableAtr)} />
-            <ToggleChip label="BOLL" active={enableBoll} onClick={() => setEnableBoll(!enableBoll)} />
-            <ToggleChip label="Volume" active={enableVolume} onClick={() => setEnableVolume(!enableVolume)} />
+            <ToggleChip
+              label="EMA"
+              active={enableEma}
+              onClick={() => setEnableEma(!enableEma)}
+            />
+            <ToggleChip
+              label="MACD"
+              active={enableMacd}
+              onClick={() => setEnableMacd(!enableMacd)}
+            />
+            <ToggleChip
+              label="RSI"
+              active={enableRsi}
+              onClick={() => setEnableRsi(!enableRsi)}
+            />
+            <ToggleChip
+              label="ATR"
+              active={enableAtr}
+              onClick={() => setEnableAtr(!enableAtr)}
+            />
+            <ToggleChip
+              label="BOLL"
+              active={enableBoll}
+              onClick={() => setEnableBoll(!enableBoll)}
+            />
+            <ToggleChip
+              label="Volume"
+              active={enableVolume}
+              onClick={() => setEnableVolume(!enableVolume)}
+            />
           </div>
 
           {enableEma && (
@@ -569,7 +628,14 @@ export function EditorStepPage() {
               <span className="text-sm text-nofx-text-muted">EMA periods</span>
               <div className="mt-1 flex flex-wrap gap-2">
                 {EMA_PERIODS.map((p) => (
-                  <ToggleChip key={p} label={String(p)} active={emaPeriods.includes(p)} onClick={() => setEmaPeriods(toggleNumberList(emaPeriods, p))} />
+                  <ToggleChip
+                    key={p}
+                    label={String(p)}
+                    active={emaPeriods.includes(p)}
+                    onClick={() =>
+                      setEmaPeriods(toggleNumberList(emaPeriods, p))
+                    }
+                  />
                 ))}
               </div>
             </div>
@@ -580,7 +646,14 @@ export function EditorStepPage() {
               <span className="text-sm text-nofx-text-muted">RSI periods</span>
               <div className="mt-1 flex flex-wrap gap-2">
                 {RSI_PERIODS.map((p) => (
-                  <ToggleChip key={p} label={String(p)} active={rsiPeriods.includes(p)} onClick={() => setRsiPeriods(toggleNumberList(rsiPeriods, p))} />
+                  <ToggleChip
+                    key={p}
+                    label={String(p)}
+                    active={rsiPeriods.includes(p)}
+                    onClick={() =>
+                      setRsiPeriods(toggleNumberList(rsiPeriods, p))
+                    }
+                  />
                 ))}
               </div>
             </div>
@@ -591,7 +664,14 @@ export function EditorStepPage() {
               <span className="text-sm text-nofx-text-muted">ATR periods</span>
               <div className="mt-1 flex flex-wrap gap-2">
                 {ATR_PERIODS.map((p) => (
-                  <ToggleChip key={p} label={String(p)} active={atrPeriods.includes(p)} onClick={() => setAtrPeriods(toggleNumberList(atrPeriods, p))} />
+                  <ToggleChip
+                    key={p}
+                    label={String(p)}
+                    active={atrPeriods.includes(p)}
+                    onClick={() =>
+                      setAtrPeriods(toggleNumberList(atrPeriods, p))
+                    }
+                  />
                 ))}
               </div>
             </div>
@@ -602,7 +682,14 @@ export function EditorStepPage() {
               <span className="text-sm text-nofx-text-muted">BOLL periods</span>
               <div className="mt-1 flex flex-wrap gap-2">
                 {BOLL_PERIODS.map((p) => (
-                  <ToggleChip key={p} label={String(p)} active={bollPeriods.includes(p)} onClick={() => setBollPeriods(toggleNumberList(bollPeriods, p))} />
+                  <ToggleChip
+                    key={p}
+                    label={String(p)}
+                    active={bollPeriods.includes(p)}
+                    onClick={() =>
+                      setBollPeriods(toggleNumberList(bollPeriods, p))
+                    }
+                  />
                 ))}
               </div>
             </div>
@@ -612,7 +699,9 @@ export function EditorStepPage() {
             <span className="text-sm text-nofx-text-muted">Candles</span>
             <div className="mt-1 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1">
-                <span className="text-xs text-nofx-text-muted">Primary count</span>
+                <span className="text-xs text-nofx-text-muted">
+                  Primary count
+                </span>
                 <input
                   type="number"
                   min={10}
@@ -624,14 +713,21 @@ export function EditorStepPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {TIMEFRAMES.map((tf) => (
-                  <ToggleChip key={tf} label={tf} active={timeframes.includes(tf)} onClick={() => toggleTimeframe(tf)} />
+                  <ToggleChip
+                    key={tf}
+                    label={tf}
+                    active={timeframes.includes(tf)}
+                    onClick={() => toggleTimeframe(tf)}
+                  />
                 ))}
               </div>
             </div>
           </div>
 
           <div className="mb-4">
-            <span className="text-sm text-nofx-text-muted">Multi-timeframe</span>
+            <span className="text-sm text-nofx-text-muted">
+              Multi-timeframe
+            </span>
             <div className="mt-1 flex flex-wrap items-center gap-3">
               <select
                 value={longerTimeframe}
@@ -640,7 +736,9 @@ export function EditorStepPage() {
               >
                 <option value="">Disabled</option>
                 {TIMEFRAMES.map((tf) => (
-                  <option key={tf} value={tf}>{tf}</option>
+                  <option key={tf} value={tf}>
+                    {tf}
+                  </option>
                 ))}
               </select>
               {longerTimeframe && (
@@ -667,19 +765,42 @@ export function EditorStepPage() {
           <div className="mb-4">
             <span className="text-sm text-nofx-text-muted">Per-coin data</span>
             <div className="mt-1 flex flex-wrap gap-2">
-              <ToggleChip label="AI500" active={enableAI500Data} onClick={() => setEnableAI500Data(!enableAI500Data)} />
-              <ToggleChip label="OI" active={enableOIData} onClick={() => setEnableOIData(!enableOIData)} />
-              <ToggleChip label="Netflow" active={enableNetflowData} onClick={() => setEnableNetflowData(!enableNetflowData)} />
-              <ToggleChip label="Price" active={enablePriceData} onClick={() => setEnablePriceData(!enablePriceData)} />
+              <ToggleChip
+                label="AI500"
+                active={enableAI500Data}
+                onClick={() => setEnableAI500Data(!enableAI500Data)}
+              />
+              <ToggleChip
+                label="OI"
+                active={enableOIData}
+                onClick={() => setEnableOIData(!enableOIData)}
+              />
+              <ToggleChip
+                label="Netflow"
+                active={enableNetflowData}
+                onClick={() => setEnableNetflowData(!enableNetflowData)}
+              />
+              <ToggleChip
+                label="Price"
+                active={enablePriceData}
+                onClick={() => setEnablePriceData(!enablePriceData)}
+              />
             </div>
           </div>
 
           {(enableOIData || enableNetflowData || enablePriceData) && (
             <div className="mb-4">
-              <span className="text-sm text-nofx-text-muted">Data durations</span>
+              <span className="text-sm text-nofx-text-muted">
+                Data durations
+              </span>
               <div className="mt-1 flex flex-wrap gap-2">
                 {DURATIONS.map((d) => (
-                  <ToggleChip key={d} label={d} active={dataDurations.includes(d)} onClick={() => toggleDuration(d)} />
+                  <ToggleChip
+                    key={d}
+                    label={d}
+                    active={dataDurations.includes(d)}
+                    onClick={() => toggleDuration(d)}
+                  />
                 ))}
               </div>
             </div>
@@ -688,20 +809,35 @@ export function EditorStepPage() {
           <div className="mb-4">
             <span className="text-sm text-nofx-text-muted">Binance data</span>
             <div className="mt-1 flex flex-wrap gap-2">
-              <ToggleChip label="Binance Technical" active={enableBinanceTechnicalData} onClick={() => setEnableBinanceTechnicalData(!enableBinanceTechnicalData)} />
-              <ToggleChip label="Binance Sentiment" active={enableBinanceSentimentData} onClick={() => setEnableBinanceSentimentData(!enableBinanceSentimentData)} />
+              <ToggleChip
+                label="Binance Technical"
+                active={enableBinanceTechnicalData}
+                onClick={() =>
+                  setEnableBinanceTechnicalData(!enableBinanceTechnicalData)
+                }
+              />
+              <ToggleChip
+                label="Binance Sentiment"
+                active={enableBinanceSentimentData}
+                onClick={() =>
+                  setEnableBinanceSentimentData(!enableBinanceSentimentData)
+                }
+              />
             </div>
             <div className="mt-2 flex items-start gap-2 rounded-md border border-nofx-danger/25 bg-nofx-danger/10 p-2">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-nofx-danger" />
               <p className="text-[11px] leading-snug text-nofx-danger">
-                Binance discontinued this data feed. These toggles are kept for reference and will produce no data.
+                Binance discontinued this data feed. These toggles are kept for
+                reference and will produce no data.
               </p>
             </div>
           </div>
 
           {enableBinanceTechnicalData && (
             <div className="mb-4">
-              <span className="text-sm text-nofx-text-muted">Binance technical intervals</span>
+              <span className="text-sm text-nofx-text-muted">
+                Binance technical intervals
+              </span>
               <div className="mt-1 flex flex-wrap gap-2">
                 {(['1h', '24h'] as const).map((iv) => (
                   <ToggleChip
@@ -710,7 +846,9 @@ export function EditorStepPage() {
                     active={binanceTechnicalIntervals.includes(iv)}
                     onClick={() =>
                       setBinanceTechnicalIntervals((prev) =>
-                        prev.includes(iv) ? prev.filter((x) => x !== iv) : [...prev, iv]
+                        prev.includes(iv)
+                          ? prev.filter((x) => x !== iv)
+                          : [...prev, iv]
                       )
                     }
                   />
@@ -719,49 +857,184 @@ export function EditorStepPage() {
             </div>
           )}
 
+          <div className="mb-4">
+            <span className="text-sm text-nofx-text-muted">AltFins data</span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <ToggleChip
+                label="AltFins"
+                active={enableAltFinsData}
+                onClick={() => setEnableAltFinsData(!enableAltFinsData)}
+              />
+            </div>
+            {enableAltFinsData && (
+              <div className="mt-2">
+                <span className="text-xs text-nofx-text-muted">Intervals</span>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {(
+                    [
+                      'MINUTES15',
+                      'HOURLY',
+                      'HOURS4',
+                      'HOURS12',
+                      'DAILY',
+                    ] as const
+                  ).map((iv) => (
+                    <ToggleChip
+                      key={iv}
+                      label={
+                        iv === 'MINUTES15'
+                          ? '15m'
+                          : iv === 'HOURLY'
+                            ? '1h'
+                            : iv === 'HOURS4'
+                              ? '4h'
+                              : iv === 'HOURS12'
+                                ? '12h'
+                                : '1d'
+                      }
+                      active={altfinsIntervals.includes(iv)}
+                      onClick={() =>
+                        setAltfinsIntervals((prev) =>
+                          prev.includes(iv)
+                            ? prev.filter((x) => x !== iv)
+                            : [...prev, iv]
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mb-4">
+            <span className="text-sm text-nofx-text-muted">
+              Vergex per-coin data
+            </span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <ToggleChip
+                label="Vergex Signal Lab"
+                active={enableVergexSignalLabData}
+                onClick={() =>
+                  setEnableVergexSignalLabData(!enableVergexSignalLabData)
+                }
+              />
+              <ToggleChip
+                label="Vergex Liquidation Heatmap"
+                active={enableVergexHeatmapData}
+                onClick={() =>
+                  setEnableVergexHeatmapData(!enableVergexHeatmapData)
+                }
+              />
+            </div>
+          </div>
+
           <hr className="my-4 border-[rgba(26,24,19,0.14)]" />
-          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-nofx-text-muted">Rankings</h4>
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-nofx-text-muted">
+            Rankings
+          </h4>
 
           <div className="mb-3">
-            <ToggleChip label="OI Ranking" active={enableOIRanking} onClick={() => setEnableOIRanking(!enableOIRanking)} />
+            <ToggleChip
+              label="OI Ranking"
+              active={enableOIRanking}
+              onClick={() => setEnableOIRanking(!enableOIRanking)}
+            />
             {enableOIRanking && (
               <div className="mt-2 flex items-center gap-3">
-                <select value={oiRankingDuration} onChange={(e) => setOIRankingDuration(e.target.value)} className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text">
-                  {RANKING_DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                <select
+                  value={oiRankingDuration}
+                  onChange={(e) => setOIRankingDuration(e.target.value)}
+                  className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
+                >
+                  {RANKING_DURATIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
                 </select>
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-nofx-text-muted">Limit</span>
-                  <input type="number" min={1} max={50} value={oiRankingLimit} onChange={(e) => setOIRankingLimit(Number(e.target.value))} className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text" />
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={oiRankingLimit}
+                    onChange={(e) => setOIRankingLimit(Number(e.target.value))}
+                    className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
+                  />
                 </div>
               </div>
             )}
           </div>
 
           <div className="mb-3">
-            <ToggleChip label="Netflow Ranking" active={enableNetFlowRanking} onClick={() => setEnableNetFlowRanking(!enableNetFlowRanking)} />
+            <ToggleChip
+              label="Netflow Ranking"
+              active={enableNetFlowRanking}
+              onClick={() => setEnableNetFlowRanking(!enableNetFlowRanking)}
+            />
             {enableNetFlowRanking && (
               <div className="mt-2 flex items-center gap-3">
-                <select value={netFlowRankingDuration} onChange={(e) => setNetFlowRankingDuration(e.target.value)} className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text">
-                  {RANKING_DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                <select
+                  value={netFlowRankingDuration}
+                  onChange={(e) => setNetFlowRankingDuration(e.target.value)}
+                  className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
+                >
+                  {RANKING_DURATIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
                 </select>
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-nofx-text-muted">Limit</span>
-                  <input type="number" min={1} max={50} value={netFlowRankingLimit} onChange={(e) => setNetFlowRankingLimit(Number(e.target.value))} className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text" />
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={netFlowRankingLimit}
+                    onChange={(e) =>
+                      setNetFlowRankingLimit(Number(e.target.value))
+                    }
+                    className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
+                  />
                 </div>
               </div>
             )}
           </div>
 
           <div className="mb-3">
-            <ToggleChip label="Price Ranking" active={enablePriceRanking} onClick={() => setEnablePriceRanking(!enablePriceRanking)} />
+            <ToggleChip
+              label="Price Ranking"
+              active={enablePriceRanking}
+              onClick={() => setEnablePriceRanking(!enablePriceRanking)}
+            />
             {enablePriceRanking && (
               <div className="mt-2 flex items-center gap-3">
-                <select value={priceRankingDuration} onChange={(e) => setPriceRankingDuration(e.target.value)} className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text">
-                  {RANKING_DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                <select
+                  value={priceRankingDuration}
+                  onChange={(e) => setPriceRankingDuration(e.target.value)}
+                  className="rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
+                >
+                  {RANKING_DURATIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
                 </select>
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-nofx-text-muted">Limit</span>
-                  <input type="number" min={1} max={50} value={priceRankingLimit} onChange={(e) => setPriceRankingLimit(Number(e.target.value))} className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text" />
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={priceRankingLimit}
+                    onChange={(e) =>
+                      setPriceRankingLimit(Number(e.target.value))
+                    }
+                    className="w-20 rounded-lg border border-[rgba(26,24,19,0.14)] bg-nofx-bg px-2 py-1 text-sm text-nofx-text"
+                  />
                 </div>
               </div>
             )}
@@ -833,7 +1106,9 @@ export function EditorStepPage() {
             </span>
             <Toggle
               checked={enableOILiquidityFilter}
-              onChange={() => setEnableOILiquidityFilter(!enableOILiquidityFilter)}
+              onChange={() =>
+                setEnableOILiquidityFilter(!enableOILiquidityFilter)
+              }
               label={enableOILiquidityFilter ? 'On' : 'Off'}
             />
             <input
