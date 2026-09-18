@@ -305,6 +305,9 @@ func calculateTimeframeSeries(klines []Kline, timeframe string, count int, perio
 	data.ATR14 = calculateATR(klines, 14)
 
 	for _, period := range periods.ATR {
+		if period <= 0 {
+			continue
+		}
 		switch period {
 		case 7:
 			data.ATR7 = calculateATR(klines, 7)

@@ -547,6 +547,75 @@ func TestFormatTimeframeSeriesDataHonorsSelectedPeriods(t *testing.T) {
 	}
 }
 
+func TestFormatTimeframeSeriesDataEmptySelectedPeriods(t *testing.T) {
+	cfg := &store.StrategyConfig{
+		Indicators: store.IndicatorConfig{
+			EnableEMA:  true,
+			EnableRSI:  true,
+			EnableATR:  true,
+			EnableBOLL: true,
+		},
+	}
+	e := NewStrategyEngine(cfg)
+
+	data := &market.Data{
+		Symbol: "BTCUSDT",
+		TimeframeData: map[string]*market.TimeframeSeriesData{
+			"1h": {
+				Timeframe: "1h",
+				Periods: market.IndicatorPeriods{
+					EMA:  []int{},
+					RSI:  []int{},
+					ATR:  []int{},
+					BOLL: []int{},
+				},
+				EMA20Values: []float64{1.5},
+				EMA50Values: []float64{1.6},
+				RSI7Values:  []float64{55},
+				RSI14Values: []float64{56},
+				ATR14:       2.5,
+				MidPrices:   []float64{100},
+				BOLLUpper:   []float64{110},
+				BOLLMiddle:  []float64{100},
+				BOLLLower:   []float64{90},
+			},
+		},
+	}
+	out := e.formatMarketData(data)
+
+	for _, unwanted := range []string{"EMA20", "EMA50", "RSI7", "RSI14", "ATR14", "BOLL Upper"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("explicitly empty selection unexpectedly contains %q:\n%s", unwanted, out)
+		}
+	}
+}
+
+func TestFormatTimeframeSeriesDataNilPeriodsFallBackToLegacy(t *testing.T) {
+	cfg := &store.StrategyConfig{
+		Indicators: store.IndicatorConfig{
+			EnableEMA: true,
+		},
+	}
+	e := NewStrategyEngine(cfg)
+
+	data := &market.Data{
+		Symbol: "BTCUSDT",
+		TimeframeData: map[string]*market.TimeframeSeriesData{
+			"1h": {
+				Timeframe:   "1h",
+				Periods:     market.IndicatorPeriods{},
+				EMA20Values: []float64{1.5},
+				MidPrices:   []float64{100},
+			},
+		},
+	}
+	out := e.formatMarketData(data)
+
+	if !strings.Contains(out, "EMA20") {
+		t.Fatalf("nil periods should fall back to legacy EMA20:\n%s", out)
+	}
+}
+
 func TestFormatTimeframeSeriesDataVolumeGating(t *testing.T) {
 	base := market.TimeframeSeriesData{
 		Timeframe: "1h",

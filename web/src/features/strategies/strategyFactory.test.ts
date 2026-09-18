@@ -120,6 +120,27 @@ describe('strategy factory', () => {
     })
   })
 
+  it('emits an explicit empty indicator period list when the category is enabled', () => {
+    const base = {
+      name: 'Test', custom_prompt: '', scan_interval_minutes: 15,
+      btcEthMaxLeverage: 5, altcoinMaxLeverage: 5,
+      btcEthPositionRatio: 5, altcoinPositionRatio: 5,
+      isCrossMargin: true, selectedTimeframes: ['15m'], excludedCoins: [],
+      maxPositions: 3, minPositionSize: 12, minRiskRewardRatio: 3.0,
+      maxMarginUsage: 1.0, minConfidence: 78,
+      enableOILiquidityFilter: true, oiLiquidityFilterMinUSDT: 15000000,
+      maxOpensPerHour: 3, maxOpensPerCycle: 2,
+      minHoldDurationMin: 90, noiseCloseHoldDurationMin: 180, reentryCooldownMin: 240,
+      earlyCloseStopLossBypassPct: -3.0, earlyCloseTakeProfitBypassPct: 8.0,
+      noiseCloseLossFloorPct: -2.0, noiseCloseProfitCeilingPct: 3.0,
+    }
+    const enabled = buildStrategyConfig({ ...base, enableEma: true, emaPeriods: [] })
+    expect(enabled.ai_config?.indicators?.ema_periods).toEqual([])
+
+    const disabled = buildStrategyConfig({ ...base, enableEma: false, emaPeriods: [] })
+    expect(disabled.ai_config?.indicators?.ema_periods).toBeUndefined()
+  })
+
   it('buildCoinSource maps binance_technical unit to concrete source', () => {
     const cs = buildCoinSource({
       id: 'crypto-binance-technical',

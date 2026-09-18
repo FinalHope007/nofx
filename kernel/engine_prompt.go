@@ -1592,7 +1592,7 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 	}
 
 	if indicators.EnableEMA {
-		if len(data.Periods.EMA) > 0 {
+		if data.Periods.EMA != nil {
 			for _, p := range data.Periods.EMA {
 				var values []float64
 				switch p {
@@ -1626,7 +1626,7 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 	}
 
 	if indicators.EnableRSI {
-		if len(data.Periods.RSI) > 0 {
+		if data.Periods.RSI != nil {
 			for _, p := range data.Periods.RSI {
 				var values []float64
 				switch p {
@@ -1652,7 +1652,7 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 	}
 
 	if indicators.EnableATR {
-		if len(data.Periods.ATR) > 0 {
+		if data.Periods.ATR != nil {
 			for _, p := range data.Periods.ATR {
 				var value float64
 				switch p {
@@ -1673,7 +1673,7 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 	}
 
 	if indicators.EnableBOLL {
-		if len(data.Periods.BOLL) > 0 {
+		if data.Periods.BOLL != nil {
 			for _, p := range data.Periods.BOLL {
 				var upper, middle, lower []float64
 				switch p {
