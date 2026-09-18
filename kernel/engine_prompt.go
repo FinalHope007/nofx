@@ -1592,11 +1592,32 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 	}
 
 	if indicators.EnableEMA {
-		if len(data.EMA20Values) > 0 {
-			sb.WriteString(fmt.Sprintf("EMA20: %s\n", formatPriceSlice(data.EMA20Values)))
-		}
-		if len(data.EMA50Values) > 0 {
-			sb.WriteString(fmt.Sprintf("EMA50: %s\n", formatPriceSlice(data.EMA50Values)))
+		if len(data.Periods.EMA) > 0 {
+			for _, p := range data.Periods.EMA {
+				var values []float64
+				switch p {
+				case 9:
+					values = data.EMA9Values
+				case 10:
+					values = data.EMA10Values
+				case 20:
+					values = data.EMA20Values
+				case 50:
+					values = data.EMA50Values
+				case 200:
+					values = data.EMA200Values
+				}
+				if len(values) > 0 {
+					sb.WriteString(fmt.Sprintf("EMA%d: %s\n", p, formatPriceSlice(values)))
+				}
+			}
+		} else {
+			if len(data.EMA20Values) > 0 {
+				sb.WriteString(fmt.Sprintf("EMA20: %s\n", formatPriceSlice(data.EMA20Values)))
+			}
+			if len(data.EMA50Values) > 0 {
+				sb.WriteString(fmt.Sprintf("EMA50: %s\n", formatPriceSlice(data.EMA50Values)))
+			}
 		}
 	}
 
@@ -1605,22 +1626,75 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 	}
 
 	if indicators.EnableRSI {
-		if len(data.RSI7Values) > 0 {
-			sb.WriteString(fmt.Sprintf("RSI7: %s\n", formatFloatSlice(data.RSI7Values)))
-		}
-		if len(data.RSI14Values) > 0 {
-			sb.WriteString(fmt.Sprintf("RSI14: %s\n", formatFloatSlice(data.RSI14Values)))
+		if len(data.Periods.RSI) > 0 {
+			for _, p := range data.Periods.RSI {
+				var values []float64
+				switch p {
+				case 7:
+					values = data.RSI7Values
+				case 14:
+					values = data.RSI14Values
+				case 21:
+					values = data.RSI21Values
+				}
+				if len(values) > 0 {
+					sb.WriteString(fmt.Sprintf("RSI%d: %s\n", p, formatFloatSlice(values)))
+				}
+			}
+		} else {
+			if len(data.RSI7Values) > 0 {
+				sb.WriteString(fmt.Sprintf("RSI7: %s\n", formatFloatSlice(data.RSI7Values)))
+			}
+			if len(data.RSI14Values) > 0 {
+				sb.WriteString(fmt.Sprintf("RSI14: %s\n", formatFloatSlice(data.RSI14Values)))
+			}
 		}
 	}
 
-	if indicators.EnableATR && data.ATR14 > 0 {
-		sb.WriteString(fmt.Sprintf("ATR14: %s\n", market.FormatPriceSigFigs(data.ATR14)))
+	if indicators.EnableATR {
+		if len(data.Periods.ATR) > 0 {
+			for _, p := range data.Periods.ATR {
+				var value float64
+				switch p {
+				case 7:
+					value = data.ATR7
+				case 14:
+					value = data.ATR14
+				case 21:
+					value = data.ATR21
+				}
+				if value > 0 {
+					sb.WriteString(fmt.Sprintf("ATR%d: %s\n", p, market.FormatPriceSigFigs(value)))
+				}
+			}
+		} else if data.ATR14 > 0 {
+			sb.WriteString(fmt.Sprintf("ATR14: %s\n", market.FormatPriceSigFigs(data.ATR14)))
+		}
 	}
 
-	if indicators.EnableBOLL && len(data.BOLLUpper) > 0 {
-		sb.WriteString(fmt.Sprintf("BOLL Upper: %s\n", formatPriceSlice(data.BOLLUpper)))
-		sb.WriteString(fmt.Sprintf("BOLL Middle: %s\n", formatPriceSlice(data.BOLLMiddle)))
-		sb.WriteString(fmt.Sprintf("BOLL Lower: %s\n", formatPriceSlice(data.BOLLLower)))
+	if indicators.EnableBOLL {
+		if len(data.Periods.BOLL) > 0 {
+			for _, p := range data.Periods.BOLL {
+				var upper, middle, lower []float64
+				switch p {
+				case 10:
+					upper, middle, lower = data.BOLL10Upper, data.BOLL10Middle, data.BOLL10Lower
+				case 20:
+					upper, middle, lower = data.BOLLUpper, data.BOLLMiddle, data.BOLLLower
+				case 50:
+					upper, middle, lower = data.BOLL50Upper, data.BOLL50Middle, data.BOLL50Lower
+				}
+				if len(upper) > 0 {
+					sb.WriteString(fmt.Sprintf("BOLL(%d) Upper: %s\n", p, formatPriceSlice(upper)))
+					sb.WriteString(fmt.Sprintf("BOLL(%d) Middle: %s\n", p, formatPriceSlice(middle)))
+					sb.WriteString(fmt.Sprintf("BOLL(%d) Lower: %s\n", p, formatPriceSlice(lower)))
+				}
+			}
+		} else if len(data.BOLLUpper) > 0 {
+			sb.WriteString(fmt.Sprintf("BOLL Upper: %s\n", formatPriceSlice(data.BOLLUpper)))
+			sb.WriteString(fmt.Sprintf("BOLL Middle: %s\n", formatPriceSlice(data.BOLLMiddle)))
+			sb.WriteString(fmt.Sprintf("BOLL Lower: %s\n", formatPriceSlice(data.BOLLLower)))
+		}
 	}
 
 	sb.WriteString("\n")

@@ -501,6 +501,80 @@ func TestFormatMarketDataSigFigs(t *testing.T) {
 	}
 }
 
+func TestFormatTimeframeSeriesDataHonorsSelectedPeriods(t *testing.T) {
+	cfg := &store.StrategyConfig{
+		Indicators: store.IndicatorConfig{
+			EnableEMA:  true,
+			EnableRSI:  true,
+			EnableATR:  true,
+			EnableBOLL: true,
+		},
+	}
+	e := NewStrategyEngine(cfg)
+
+	data := &market.Data{
+		Symbol: "BTCUSDT",
+		TimeframeData: map[string]*market.TimeframeSeriesData{
+			"1h": {
+				Timeframe: "1h",
+				Periods: market.IndicatorPeriods{
+					EMA:  []int{10},
+					RSI:  []int{21},
+					ATR:  []int{7},
+					BOLL: []int{50},
+				},
+				EMA10Values:  []float64{1.5},
+				RSI21Values:  []float64{55},
+				ATR7:         2.5,
+				MidPrices:    []float64{100},
+				BOLL50Upper:  []float64{110},
+				BOLL50Middle: []float64{100},
+				BOLL50Lower:  []float64{90},
+			},
+		},
+	}
+	out := e.formatMarketData(data)
+
+	for _, want := range []string{"EMA10", "RSI21", "ATR7", "BOLL(50)"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"EMA20", "EMA50", "RSI7", "RSI14", "ATR14"} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("output unexpectedly contains %q:\n%s", unwanted, out)
+		}
+	}
+}
+
+func TestFormatTimeframeSeriesDataVolumeGating(t *testing.T) {
+	base := market.TimeframeSeriesData{
+		Timeframe: "1h",
+		MidPrices: []float64{100},
+		Volume:    []float64{12.5},
+	}
+	data := &market.Data{
+		Symbol:        "BTCUSDT",
+		TimeframeData: map[string]*market.TimeframeSeriesData{"1h": &base},
+	}
+
+	disabled := NewStrategyEngine(&store.StrategyConfig{
+		Indicators: store.IndicatorConfig{EnableVolume: false},
+	})
+	out := disabled.formatMarketData(data)
+	if strings.Contains(out, "Volume:") {
+		t.Fatalf("volume line present when EnableVolume=false:\n%s", out)
+	}
+
+	enabled := NewStrategyEngine(&store.StrategyConfig{
+		Indicators: store.IndicatorConfig{EnableVolume: true},
+	})
+	out = enabled.formatMarketData(data)
+	if !strings.Contains(out, "Volume:") {
+		t.Fatalf("volume line missing when EnableVolume=true:\n%s", out)
+	}
+}
+
 // TestFormatMarketDataSigFigsLowPriceCoin verifies sub-cent coins keep their
 // magnitude instead of being flattened to 4 decimals.
 func TestFormatMarketDataSigFigsLowPriceCoin(t *testing.T) {
