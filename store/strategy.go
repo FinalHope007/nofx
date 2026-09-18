@@ -99,6 +99,28 @@ func (c *StrategyConfig) ClampLimits() {
 	}
 	c.Indicators.DataDurations = kept
 
+	// Clamp AltFins intervals to the five supported enum values.
+	supportedAltFins := []string{"MINUTES15", "HOURLY", "HOURS4", "HOURS12", "DAILY"}
+	seenAF := map[string]bool{}
+	var keptAF []string
+	for _, iv := range c.Indicators.AltFinsIntervals {
+		iv = strings.TrimSpace(iv)
+		if iv == "" || seenAF[iv] {
+			continue
+		}
+		for _, s := range supportedAltFins {
+			if iv == s {
+				seenAF[iv] = true
+				keptAF = append(keptAF, iv)
+				break
+			}
+		}
+	}
+	if len(keptAF) == 0 && c.Indicators.EnableAltFinsData {
+		keptAF = []string{"MINUTES15", "DAILY"}
+	}
+	c.Indicators.AltFinsIntervals = keptAF
+
 	// Clamp max positions
 	if c.RiskControl.MaxPositions < 1 {
 		c.RiskControl.MaxPositions = 1
@@ -1087,9 +1109,17 @@ type IndicatorConfig struct {
 	DataDurations     []string `json:"data_durations,omitempty"` // 15m..24h
 
 	// Binance Opportunity per-coin detail sources (free).
-	EnableBinanceTechnicalData  bool     `json:"enable_binance_technical_data"`           // per-coin technical detail
-	EnableBinanceSentimentData  bool     `json:"enable_binance_sentiment_data"`           // per-coin sentiment detail
-	BinanceTechnicalIntervals   []string `json:"binance_technical_intervals,omitempty"`   // "1h","24h"
+	EnableBinanceTechnicalData bool     `json:"enable_binance_technical_data"`         // per-coin technical detail
+	EnableBinanceSentimentData bool     `json:"enable_binance_sentiment_data"`         // per-coin sentiment detail
+	BinanceTechnicalIntervals  []string `json:"binance_technical_intervals,omitempty"` // "1h","24h"
+
+	// AltFins per-coin analytics (free, keyless, source-independent).
+	EnableAltFinsData bool     `json:"enable_altfins_data"`
+	AltFinsIntervals  []string `json:"altfins_intervals,omitempty"` // MINUTES15, HOURLY, HOURS4, HOURS12, DAILY
+
+	// Vergex free per-coin detail feeds (independent of vergex_signal).
+	EnableVergexSignalLabData bool `json:"enable_vergex_signal_lab_data"`
+	EnableVergexHeatmapData   bool `json:"enable_vergex_heatmap_data"`
 }
 
 // KlineConfig K-line configuration
@@ -1664,6 +1694,15 @@ func (c *StrategyConfig) EstimateTokens() TokenEstimate {
 	}
 	if c.Indicators.EnablePriceData {
 		totalMarketChars += numCoins * 30 * len(c.Indicators.DataDurations)
+	}
+	if c.Indicators.EnableAltFinsData {
+		totalMarketChars += numCoins * 300 * len(c.Indicators.AltFinsIntervals)
+	}
+	if c.Indicators.EnableVergexSignalLabData {
+		totalMarketChars += numCoins * 800
+	}
+	if c.Indicators.EnableVergexHeatmapData {
+		totalMarketChars += numCoins * 600
 	}
 
 	breakdown.MarketData = totalMarketChars / 4 // numeric data: ~4 chars per token

@@ -45,3 +45,40 @@ func TestIndicatorConfigBinanceFieldsRoundTrip(t *testing.T) {
 		t.Fatalf("expected 2 intervals, got %v", back.Indicators.BinanceTechnicalIntervals)
 	}
 }
+
+func TestAltFinsClampAndDefaults(t *testing.T) {
+	cfg := GetDefaultStrategyConfig("en")
+	cfg.Indicators.EnableAltFinsData = true
+	cfg.Indicators.AltFinsIntervals = []string{"MINUTES15", "HOURS1", "DAILY", "MINUTES15", "", "HOURS4"}
+	cfg.ClampLimits()
+	want := []string{"MINUTES15", "DAILY", "HOURS4"}
+	if len(cfg.Indicators.AltFinsIntervals) != len(want) {
+		t.Fatalf("got %v want %v", cfg.Indicators.AltFinsIntervals, want)
+	}
+	for i := range want {
+		if cfg.Indicators.AltFinsIntervals[i] != want[i] {
+			t.Fatalf("got %v want %v", cfg.Indicators.AltFinsIntervals, want)
+		}
+	}
+
+	// Toggle on with empty list -> default [MINUTES15, DAILY].
+	cfg2 := GetDefaultStrategyConfig("en")
+	cfg2.Indicators.EnableAltFinsData = true
+	cfg2.Indicators.AltFinsIntervals = nil
+	cfg2.ClampLimits()
+	if len(cfg2.Indicators.AltFinsIntervals) != 2 ||
+		cfg2.Indicators.AltFinsIntervals[0] != "MINUTES15" ||
+		cfg2.Indicators.AltFinsIntervals[1] != "DAILY" {
+		t.Fatalf("expected default [MINUTES15 DAILY], got %v", cfg2.Indicators.AltFinsIntervals)
+	}
+}
+
+func TestAltFinsEstimateTokensIncreases(t *testing.T) {
+	base := GetDefaultStrategyConfig("en")
+	withData := GetDefaultStrategyConfig("en")
+	withData.Indicators.EnableAltFinsData = true
+	withData.Indicators.AltFinsIntervals = []string{"MINUTES15", "DAILY"}
+	if withData.EstimateTokens().Total <= base.EstimateTokens().Total {
+		t.Fatal("expected AltFins to increase token estimate")
+	}
+}
