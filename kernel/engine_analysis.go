@@ -7,8 +7,10 @@ import (
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
+	"nofx/provider/altfins"
 	"nofx/provider/binance"
 	"nofx/provider/nofxos"
+	"nofx/provider/vergex"
 	"nofx/store"
 	"regexp"
 	"strings"
@@ -189,7 +191,9 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 	cfg := engine.GetConfig()
 	if !cfg.Indicators.EnableAI500Data && !cfg.Indicators.EnableOIData &&
 		!cfg.Indicators.EnableNetflowData && !cfg.Indicators.EnablePriceData &&
-		!cfg.Indicators.EnableBinanceTechnicalData && !cfg.Indicators.EnableBinanceSentimentData {
+		!cfg.Indicators.EnableBinanceTechnicalData && !cfg.Indicators.EnableBinanceSentimentData &&
+		!cfg.Indicators.EnableAltFinsData &&
+		!cfg.Indicators.EnableVergexSignalLabData && !cfg.Indicators.EnableVergexHeatmapData {
 		return nil
 	}
 
@@ -322,6 +326,86 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 			}
 			for k, v := range val.LabelMap() {
 				sig.BinanceSentiment[k] = v
+			}
+			out[sym] = sig
+		}
+	}
+
+	// AltFins per-coin analytics (free, keyless; read from TTL cache, fall back
+	// to a synchronous fetch on miss). Failures/no-match are skipped silently.
+	if cfg.Indicators.EnableAltFinsData {
+		intervals := cfg.Indicators.AltFinsIntervals
+		if len(intervals) == 0 {
+			intervals = []string{"MINUTES15", "DAILY"}
+		}
+		for sym := range symSet {
+			id := int64(0)
+			resolved := false
+			for _, iv := range intervals {
+				key := sym + "|" + iv
+				val, ok := engine.altfinsDetail(key)
+				if ok {
+					sig := out[sym]
+					if sig.AltFins == nil {
+						sig.AltFins = make(map[string]*altfins.Analytics)
+					}
+					sig.AltFins[iv] = val
+					out[sym] = sig
+					continue
+				}
+				if !resolved {
+					rid, found, err := engine.altfinsClient.ResolveIdentifier(apiCtx, sym)
+					if err != nil {
+						logger.Warnf("⚠️ AltFins resolve failed (%s): %v", sym, err)
+						break
+					}
+					if !found {
+						break
+					}
+					id, resolved = rid, true
+				}
+				val, err := engine.altfinsClient.GetAnalytics(apiCtx, id, iv)
+				if err != nil {
+					logger.Warnf("⚠️ AltFins analytics failed (%s %s): %v", sym, iv, err)
+					continue
+				}
+				engine.cacheAltfinsDetail(key, val)
+				sig := out[sym]
+				if sig.AltFins == nil {
+					sig.AltFins = make(map[string]*altfins.Analytics)
+				}
+				sig.AltFins[iv] = val
+				out[sym] = sig
+			}
+		}
+	}
+
+	// Vergex free per-coin detail feeds, for any non-vergex_signal source (the
+	// vergex_signal path already fetches these via FetchVergexDataBatch).
+	if cfg.CoinSource.SourceType != "vergex_signal" &&
+		(cfg.Indicators.EnableVergexSignalLabData || cfg.Indicators.EnableVergexHeatmapData) &&
+		engine.freeClient != nil {
+		for sym := range symSet {
+			q := vergex.Query{
+				MarketType: cfg.CoinSource.VergexMarketType,
+				Symbol:     sym,
+				Chain:      cfg.CoinSource.VergexChain,
+				LiqBand:    cfg.CoinSource.VergexLiqBand,
+			}
+			sig := out[sym]
+			if cfg.Indicators.EnableVergexSignalLabData {
+				if body, err := engine.freeClient.GetSignalLab(apiCtx, q); err != nil {
+					logger.Warnf("⚠️ Vergex signal-lab failed (%s): %v", sym, err)
+				} else {
+					sig.VergexSignalLab = body
+				}
+			}
+			if cfg.Indicators.EnableVergexHeatmapData {
+				if body, err := engine.freeClient.GetCostLiquidationHeatmap(apiCtx, q); err != nil {
+					logger.Warnf("⚠️ Vergex heatmap failed (%s): %v", sym, err)
+				} else {
+					sig.VergexHeatmap = body
+				}
 			}
 			out[sym] = sig
 		}

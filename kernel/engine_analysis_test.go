@@ -77,3 +77,24 @@ func TestIndicatorPeriodsFor(t *testing.T) {
 		t.Fatalf("BOLL: got %v, want %v", got.BOLL, []int{30})
 	}
 }
+
+func TestAttachPerCoinSignalsAltFins(t *testing.T) {
+	cfg := &store.StrategyConfig{}
+	cfg.Indicators.EnableAltFinsData = true
+	cfg.Indicators.AltFinsIntervals = []string{"MINUTES15"}
+
+	engine := NewStrategyEngine(cfg)
+	engine.altfinsClient = &fakeAltfinsClient{ids: map[string]int64{"ZEC": 1021300}}
+
+	ctx := &Context{
+		CandidateCoins: []CandidateCoin{{Symbol: "ZECUSDT"}},
+		Ctx:            context.Background(),
+	}
+	if err := attachPerCoinSignals(ctx, engine); err != nil {
+		t.Fatalf("attachPerCoinSignals: %v", err)
+	}
+	sig, ok := engine.PerCoinSignalFor("ZECUSDT")
+	if !ok || sig.AltFins["MINUTES15"] == nil {
+		t.Fatalf("expected AltFins signal, got %+v ok=%v", sig, ok)
+	}
+}
