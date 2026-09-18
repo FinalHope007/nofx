@@ -44,4 +44,16 @@ func TestUpdatePositionSLTP(t *testing.T) {
 	if got.StopLoss != 0.0714 || got.TakeProfit != 0.0827 {
 		t.Fatalf("SL/TP = %v/%v, want 0.0714/0.0827", got.StopLoss, got.TakeProfit)
 	}
+	if got.Quantity != pos.Quantity {
+		t.Fatalf("Quantity = %v, want %v", got.Quantity, pos.Quantity)
+	}
+	if got.EntryPrice != pos.EntryPrice {
+		t.Fatalf("EntryPrice = %v, want %v", got.EntryPrice, pos.EntryPrice)
+	}
+	if got.Status != pos.Status {
+		t.Fatalf("Status = %v, want %v", got.Status, pos.Status)
+	}
+	if got.EntryTime != pos.EntryTime {
+		t.Fatalf("EntryTime = %v, want %v", got.EntryTime, pos.EntryTime)
+	}
 }
