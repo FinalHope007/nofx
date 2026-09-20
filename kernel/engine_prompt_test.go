@@ -874,3 +874,42 @@ func TestFormatPerCoinSignalsVergexRenderedForOtherSource(t *testing.T) {
 		t.Fatalf("expected vergex heatmap for non-vergex source:\n%s", out)
 	}
 }
+
+func TestBuildSystemPromptAI500HoldGuidanceAndValidJSON(t *testing.T) {
+	cfg := store.GetDefaultStrategyConfig("en")
+	cfg.CoinSource = store.CoinSourceConfig{
+		SourceType: "ai500",
+		UseAI500:   true,
+		AI500Limit: 10,
+	}
+	engine := NewStrategyEngine(&cfg)
+	prompt := engine.BuildSystemPrompt(20, "balanced")
+
+	if !strings.Contains(prompt, "- Optional when holding: stop_loss, take_profit, confidence") {
+		t.Fatalf("prompt is missing hold SL/TP guidance:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, `{"symbol": "SOLUSDT", "action": "hold", "stop_loss": 107.39, "take_profit": 112.52, "confidence": 85}`) {
+		t.Fatalf("prompt is missing the hold example:\n%s", prompt)
+	}
+
+	start := strings.Index(prompt, "```json\n")
+	if start < 0 {
+		t.Fatalf("no json example block found")
+	}
+	start += len("```json\n")
+	end := strings.Index(prompt[start:], "\n```")
+	if end < 0 {
+		t.Fatalf("json example block not terminated")
+	}
+	var decisions []Decision
+	if err := json.Unmarshal([]byte(prompt[start:start+end]), &decisions); err != nil {
+		t.Fatalf("example decision JSON is invalid: %v\nblock:\n%s", err, prompt[start:start+end])
+	}
+	if len(decisions) != 3 {
+		t.Fatalf("example JSON has %d decisions, want 3", len(decisions))
+	}
+	last := decisions[len(decisions)-1]
+	if last.Action != "hold" || last.StopLoss != 107.39 || last.TakeProfit != 112.52 {
+		t.Fatalf("hold example not parsed as expected: %+v", last)
+	}
+}

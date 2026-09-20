@@ -671,7 +671,8 @@ func writeOutputFormat(sb *strings.Builder, accountEquity, btcEthPosValueRatio f
 		examplePositionSize := accountEquity * btcEthPosValueRatio
 		sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300},\n",
 			riskControl.BTCETHMaxLeverage, examplePositionSize))
-		sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\"}\n")
+		sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\"},\n")
+		sb.WriteString("  {\"symbol\": \"SOLUSDT\", \"action\": \"hold\", \"stop_loss\": 107.39, \"take_profit\": 112.52, \"confidence\": 85}\n")
 	}
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
@@ -681,6 +682,7 @@ func writeOutputFormat(sb *strings.Builder, accountEquity, btcEthPosValueRatio f
 		sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
 		sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
 		sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
+		sb.WriteString("- Optional when holding: stop_loss, take_profit, confidence\n")
 		sb.WriteString("- **Price precision**: use the same significant figures as the prices shown in `## Market Data` (e.g. `76708.91` for BTC, `0.0055680` for a sub-cent coin). Do not round prices to a fixed number of decimals.\n")
 		sb.WriteString("- **IMPORTANT**: all numeric values must be calculated numbers, NOT formulas/expressions (e.g. use `27.76`, not `3000 * 0.01`)\n")
 		if singleSymbol {
@@ -692,6 +694,7 @@ func writeOutputFormat(sb *strings.Builder, accountEquity, btcEthPosValueRatio f
 		sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
 		sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
 		sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
+		sb.WriteString("- Optional when holding: stop_loss, take_profit, confidence\n")
 		sb.WriteString("- **Price precision**: use the same significant figures as the prices shown in `## Market Data` (e.g. `76708.91` for BTC, `0.0055680` for a sub-cent coin). Do not round prices to a fixed number of decimals.\n")
 		sb.WriteString("- **IMPORTANT**: all numeric values must be calculated numbers, NOT formulas/expressions (e.g. use `27.76`, not `3000 * 0.01`)\n")
 		if singleSymbol {
