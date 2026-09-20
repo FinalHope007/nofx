@@ -89,14 +89,30 @@ func (at *AutoTrader) applyTrailingSLTP(decision *kernel.Decision, actionRecord 
 	}
 
 	if newSL != openPos.StopLoss {
+		if err := at.trader.CancelStopLossOrders(exchangeSymbol); err != nil {
+			logger.Infof("  ⚠ Failed to cancel old stop loss before update: %v", err)
+		}
 		if err := at.trader.SetStopLoss(exchangeSymbol, positionSide, quantity, newSL); err != nil {
 			logger.Infof("  ⚠ Failed to update trailing stop loss: %v", err)
+			if openPos.StopLoss > 0 {
+				if restoreErr := at.trader.SetStopLoss(exchangeSymbol, positionSide, quantity, openPos.StopLoss); restoreErr != nil {
+					logger.Infof("  ⚠ Failed to restore previous stop loss: %v", restoreErr)
+				}
+			}
 			newSL = openPos.StopLoss
 		}
 	}
 	if newTP != openPos.TakeProfit {
+		if err := at.trader.CancelTakeProfitOrders(exchangeSymbol); err != nil {
+			logger.Infof("  ⚠ Failed to cancel old take profit before update: %v", err)
+		}
 		if err := at.trader.SetTakeProfit(exchangeSymbol, positionSide, quantity, newTP); err != nil {
 			logger.Infof("  ⚠ Failed to update trailing take profit: %v", err)
+			if openPos.TakeProfit > 0 {
+				if restoreErr := at.trader.SetTakeProfit(exchangeSymbol, positionSide, quantity, openPos.TakeProfit); restoreErr != nil {
+					logger.Infof("  ⚠ Failed to restore previous take profit: %v", restoreErr)
+				}
+			}
 			newTP = openPos.TakeProfit
 		}
 	}
