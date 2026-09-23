@@ -6,11 +6,45 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"nofx/provider/nofxos"
 	"nofx/provider/vergex"
 	"nofx/store"
 )
+
+func TestGetAI500CoinsMarksStale(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.Write([]byte(`{"category":{"assets":[{"symbol":"BR","pair":"BRUSDT","score":75}]}}`))
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	tr := nofxos.NewFreeTrendingClient()
+	tr.SetBaseURL(srv.URL)
+	engine := &StrategyEngine{trending: tr}
+
+	if coins, err := engine.getAI500Coins(10); err != nil || len(coins) != 1 {
+		t.Fatalf("first: %v %d", err, len(coins))
+	}
+	if w := engine.ConsumePoolWarning(); w != "" {
+		t.Fatalf("expected no warning on fresh fetch, got %q", w)
+	}
+	tr.ForceStaleForTest(30 * time.Minute)
+
+	if coins, err := engine.getAI500Coins(10); err != nil || len(coins) != 1 {
+		t.Fatalf("stale: %v %d", err, len(coins))
+	}
+	if w := engine.ConsumePoolWarning(); w == "" {
+		t.Fatalf("expected stale warning")
+	}
+}
 
 func TestEngine_getOITopCoins_usesFree(t *testing.T) {
 	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
