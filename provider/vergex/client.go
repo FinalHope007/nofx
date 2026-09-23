@@ -99,6 +99,7 @@ type Client struct {
 	baseURL    string
 	privateKey *ecdsa.PrivateKey
 	httpClient *http.Client
+	freeHTTP   security.HTTPDoer
 	logger     mcp.Logger
 	freeMode   bool   // true: plain HTTP GET on vergex.trade; false: x402 paid
 	authToken  string // optional Bearer token for free-mode authed endpoints
@@ -178,9 +179,14 @@ func NewFreeClient(baseURL, authToken string, logger mcp.Logger) (*Client, error
 	if logger == nil {
 		logger = mcp.NewNoopLogger()
 	}
+	freeHTTP, err := security.NewFreeHTTPClient(30 * time.Second)
+	if err != nil {
+		freeHTTP = security.SafeHTTPClient(30 * time.Second)
+	}
 	return &Client{
 		baseURL:    baseURL,
 		httpClient: security.SafeHTTPClient(30 * time.Second),
+		freeHTTP:   freeHTTP,
 		logger:     logger,
 		freeMode:   true,
 		authToken:  strings.TrimSpace(authToken),
@@ -359,11 +365,11 @@ func (c *Client) doFreeGET(ctx context.Context, fullURL string) ([]byte, error) 
 	if err != nil {
 		return nil, fmt.Errorf("vergex free request: %w", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; nofx)")
+	security.SetBrowserHeaders(req)
 	if c.authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.authToken)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.freeHTTP.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("vergex free GET %s: %w", fullURL, err)
 	}
