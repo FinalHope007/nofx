@@ -83,10 +83,10 @@ func (at *AutoTrader) runCycle() error {
 	// NOTE: Must be called BEFORE candidate coins check to ensure equity is always recorded
 	at.saveEquitySnapshot(ctx)
 
-	// If no candidate coins available, log but do not error
-	if len(ctx.CandidateCoins) == 0 {
+	// If no candidate coins AND no open positions, nothing to manage: skip.
+	if shouldSkipForNoCandidates(len(ctx.CandidateCoins), len(ctx.Positions)) {
 		at.logInfof("ℹ️ No candidate coins available, skipping this cycle")
-		record.Success = true // Not an error, just no candidate coins
+		record.Success = true
 		record.ExecutionLog = append(record.ExecutionLog, "No candidate coins available, cycle skipped")
 		record.AccountState = store.AccountSnapshot{
 			TotalBalance:          ctx.Account.TotalEquity,
@@ -99,6 +99,18 @@ func (at *AutoTrader) runCycle() error {
 			at.logWarnf("⚠ Failed to save decision record: %v", err)
 		}
 		return nil
+	}
+
+	// Candidate pool unavailable (fetch failed and cache expired) but positions
+	// are open: still call the LLM to manage them (positions-only context).
+	if len(ctx.CandidateCoins) == 0 && len(ctx.Positions) > 0 {
+		msg := fmt.Sprintf("⚠️ Candidate pool unavailable; managing %d existing position(s) only (no new positions)", len(ctx.Positions))
+		at.logWarnf(msg)
+		record.ExecutionLog = append(record.ExecutionLog, msg)
+	} else if at.strategyEngine != nil {
+		if w := at.strategyEngine.ConsumePoolWarning(); w != "" {
+			record.ExecutionLog = append(record.ExecutionLog, "⚠️ "+w)
+		}
 	}
 
 	logger.Info(strings.Repeat("=", 70))
@@ -347,6 +359,10 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	return nil
+}
+
+func shouldSkipForNoCandidates(candidateCount, positionCount int) bool {
+	return candidateCount == 0 && positionCount == 0
 }
 
 func normalizeUniverseSymbol(symbol string) string {

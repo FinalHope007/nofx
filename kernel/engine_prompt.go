@@ -910,6 +910,13 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 		positionSymbols[normalizedSymbol] = true
 	}
 
+	if len(ctx.CandidateCoins) == 0 {
+		if e.GetLanguage() == LangChinese {
+			sb.WriteString("本轮没有可用候选币池，请仅管理现有持仓。\n\n")
+		} else {
+			sb.WriteString("No candidate pool is available this cycle; manage existing positions only.\n\n")
+		}
+	}
 	sb.WriteString(fmt.Sprintf("## Candidate Coins (%d coins)\n\n", len(ctx.MarketDataMap)))
 	displayedCount := 0
 	for _, coin := range ctx.CandidateCoins {

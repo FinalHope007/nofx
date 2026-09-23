@@ -913,3 +913,30 @@ func TestBuildSystemPromptAI500HoldGuidanceAndValidJSON(t *testing.T) {
 		t.Fatalf("hold example not parsed as expected: %+v", last)
 	}
 }
+
+func TestBuildUserPromptEmptyCandidatesInstructsPositionsOnly(t *testing.T) {
+	cfg := store.GetDefaultStrategyConfig("en")
+	e := NewStrategyEngine(&cfg)
+	ctx := &Context{
+		Positions: []PositionInfo{{Symbol: "BTCUSDT", Side: "long"}},
+	}
+	out := e.BuildUserPrompt(ctx)
+	if !strings.Contains(out, "No candidate pool is available this cycle; manage existing positions only.") {
+		t.Fatalf("missing empty-candidate-pool instruction:\n%s", out)
+	}
+
+	cfgZH := store.GetDefaultStrategyConfig("zh")
+	eZH := NewStrategyEngine(&cfgZH)
+	outZH := eZH.BuildUserPrompt(ctx)
+	if !strings.Contains(outZH, "本轮没有可用候选币池，请仅管理现有持仓。") {
+		t.Fatalf("missing Chinese empty-candidate-pool instruction:\n%s", outZH)
+	}
+
+	cfgWithCandidates := store.GetDefaultStrategyConfig("en")
+	eWith := NewStrategyEngine(&cfgWithCandidates)
+	ctxWith := &Context{CandidateCoins: []CandidateCoin{{Symbol: "ETHUSDT"}}}
+	outWith := eWith.BuildUserPrompt(ctxWith)
+	if strings.Contains(outWith, "No candidate pool is available this cycle") {
+		t.Fatalf("instruction must not appear when candidates exist:\n%s", outWith)
+	}
+}
