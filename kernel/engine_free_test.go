@@ -46,6 +46,30 @@ func TestGetAI500CoinsMarksStale(t *testing.T) {
 	}
 }
 
+func TestGetAI500CoinsColdFailureReturnsEmptyNotError(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("<html>Just a moment...</html>"))
+	}))
+	defer srv.Close()
+
+	tr := nofxos.NewFreeTrendingClient()
+	tr.SetBaseURL(srv.URL)
+	engine := &StrategyEngine{trending: tr}
+
+	coins, err := engine.getAI500Coins(10)
+	if err != nil {
+		t.Fatalf("expected empty pool, not error, got %v", err)
+	}
+	if len(coins) != 0 {
+		t.Fatalf("expected no candidates, got %d", len(coins))
+	}
+	if w := engine.ConsumePoolWarning(); w == "" {
+		t.Fatalf("expected pool-unavailable warning")
+	}
+}
+
 func TestEngine_getOITopCoins_usesFree(t *testing.T) {
 	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
 	srvOI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

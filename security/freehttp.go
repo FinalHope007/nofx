@@ -70,11 +70,21 @@ func NewFreeHTTPClient(timeout time.Duration) (HTTPDoer, error) {
 	}
 }
 
-func newFingerprintClient(timeout time.Duration) (HTTPDoer, error) {
+// fingerprintProfiles is the ordered set of TLS fingerprints tried before
+// falling back to curl. Cloudflare's managed-challenge tuning blocks some
+// profiles and allows others, and which ones are blocked shifts over time, so
+// a single pinned profile is fragile.
+var fingerprintProfiles = []profiles.ClientProfile{
+	profiles.Chrome_133,
+	profiles.Firefox_120,
+	profiles.Safari_16_0,
+}
+
+func newFingerprintProfileClient(timeout time.Duration, profile profiles.ClientProfile) (HTTPDoer, error) {
 	jar := tlsclient.NewCookieJar()
 	opts := []tlsclient.HttpClientOption{
 		tlsclient.WithTimeoutSeconds(int(timeout.Seconds())),
-		tlsclient.WithClientProfile(profiles.Chrome_133),
+		tlsclient.WithClientProfile(profile),
 		tlsclient.WithCookieJar(jar),
 		tlsclient.WithCustomRedirectFunc(fingerprintRedirectCheck),
 	}
@@ -82,10 +92,20 @@ func newFingerprintClient(timeout time.Duration) (HTTPDoer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("tls-client init: %w", err)
 	}
-	return &fallbackDoer{
-		primary:   &tlsAdapter{client: tc},
-		secondary: &curlDoer{timeout: timeout},
-	}, nil
+	return &tlsAdapter{client: tc}, nil
+}
+
+func newFingerprintClient(timeout time.Duration) (HTTPDoer, error) {
+	doers := make([]HTTPDoer, 0, len(fingerprintProfiles)+1)
+	for _, profile := range fingerprintProfiles {
+		d, err := newFingerprintProfileClient(timeout, profile)
+		if err != nil {
+			return nil, err
+		}
+		doers = append(doers, d)
+	}
+	doers = append(doers, &curlDoer{timeout: timeout})
+	return &fallbackDoer{doers: doers}, nil
 }
 
 // fingerprintRedirectCheck validates every redirect target the tls-client
@@ -152,36 +172,49 @@ func toNetHTTPResponse(fresp *fhttp.Response, req *http.Request) *http.Response 
 	}
 }
 
+// fallbackDoer tries a sequence of transports in order and sticks with the
+// first one that does not return a Cloudflare challenge. The index is advanced
+// past any transport whose response is a Cloudflare challenge, so subsequent
+// requests skip the blocked fingerprint(s) for the process lifetime.
 type fallbackDoer struct {
-	primary   HTTPDoer
-	secondary HTTPDoer
-	demoted   bool
-	mu        sync.Mutex
+	doers []HTTPDoer
+	idx   int
+	mu    sync.Mutex
 }
 
 func (f *fallbackDoer) Do(req *http.Request) (*http.Response, error) {
 	f.mu.Lock()
-	demoted := f.demoted
+	idx := f.idx
 	f.mu.Unlock()
 
-	if !demoted {
-		resp, err := f.primary.Do(req)
-		if err == nil && isCloudflareChallenge(resp) {
-			f.mu.Lock()
-			f.demoted = true
-			f.mu.Unlock()
-			var body []byte
-			if resp.Body != nil {
-				body, _ = io.ReadAll(resp.Body)
-				resp.Body.Close()
-			}
-			retry := req.Clone(req.Context())
-			retry.Body = io.NopCloser(bytes.NewReader(body))
-			return f.secondary.Do(retry)
+	for ; idx < len(f.doers); idx++ {
+		resp, err := f.doers[idx].Do(req)
+		if err != nil {
+			return nil, err
 		}
-		return resp, err
+		if !isCloudflareChallenge(resp) {
+			return resp, nil
+		}
+		// Challenge: drain this response and demote to the next transport.
+		if resp.Body != nil {
+			_, _ = io.ReadAll(resp.Body)
+			resp.Body.Close()
+		}
+		f.mu.Lock()
+		if f.idx < idx+1 {
+			f.idx = idx + 1
+		}
+		f.mu.Unlock()
 	}
-	return f.secondary.Do(req)
+	// All transports exhausted their non-challenge attempts; use the last one
+	// (curl) so the caller still receives a concrete response/error.
+	f.mu.Lock()
+	last := f.idx - 1
+	f.mu.Unlock()
+	if last < 0 {
+		last = 0
+	}
+	return f.doers[last].Do(req)
 }
 
 func isCloudflareChallenge(resp *http.Response) bool {

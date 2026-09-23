@@ -91,8 +91,10 @@ func TestFallbackDoerDemotesOnChallenge(t *testing.T) {
 	ok := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: http.NoBody}
 
 	fd := &fallbackDoer{
-		primary:   doerFunc(func(*http.Request) (*http.Response, error) { primaryCalls++; return challenge, nil }),
-		secondary: doerFunc(func(*http.Request) (*http.Response, error) { secondaryCalls++; return ok, nil }),
+		doers: []HTTPDoer{
+			doerFunc(func(*http.Request) (*http.Response, error) { primaryCalls++; return challenge, nil }),
+			doerFunc(func(*http.Request) (*http.Response, error) { secondaryCalls++; return ok, nil }),
+		},
 	}
 	req, _ := http.NewRequest(http.MethodGet, "https://vergex.trade/x", nil)
 
@@ -107,6 +109,55 @@ func TestFallbackDoerDemotesOnChallenge(t *testing.T) {
 	}
 	if primaryCalls != 1 || secondaryCalls != 2 {
 		t.Fatalf("expected sticky secondary, primary=%d secondary=%d", primaryCalls, secondaryCalls)
+	}
+}
+
+func TestFallbackDoerSkipsMultipleBlockedProfiles(t *testing.T) {
+	var calls [4]int
+	challenge := func() *http.Response {
+		return &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{"Server": []string{"cloudflare"}}}
+	}
+	ok := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: http.NoBody}
+	mk := func(i int) HTTPDoer {
+		return doerFunc(func(*http.Request) (*http.Response, error) {
+			calls[i]++
+			return challenge(), nil
+		})
+	}
+	fd := &fallbackDoer{
+		doers: []HTTPDoer{mk(0), mk(1), doerFunc(func(*http.Request) (*http.Response, error) {
+			calls[2]++
+			return ok, nil
+		}), mk(3)},
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://vergex.trade/x", nil)
+
+	for i := 0; i < 3; i++ {
+		if _, err := fd.Do(req); err != nil {
+			t.Fatalf("Do %d: %v", i, err)
+		}
+	}
+	if calls[0] != 1 || calls[1] != 1 || calls[2] != 3 || calls[3] != 0 {
+		t.Fatalf("expected sticky good transport after two blocked profiles, got %v", calls)
+	}
+}
+
+func TestFallbackDoerExhaustedReturnsLastResponse(t *testing.T) {
+	challenge := &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{"Server": []string{"cloudflare"}}}
+	var lastCalls int
+	fd := &fallbackDoer{
+		doers: []HTTPDoer{
+			doerFunc(func(*http.Request) (*http.Response, error) { return challenge, nil }),
+			doerFunc(func(*http.Request) (*http.Response, error) { lastCalls++; return challenge, nil }),
+		},
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://vergex.trade/x", nil)
+	resp, err := fd.Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if resp.StatusCode != http.StatusForbidden || lastCalls != 2 {
+		t.Fatalf("expected final challenge from last doer, status=%d lastCalls=%d", resp.StatusCode, lastCalls)
 	}
 }
 

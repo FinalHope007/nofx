@@ -873,6 +873,15 @@ func (e *StrategyEngine) filterExcludedCoins(candidates []CandidateCoin) []Candi
 	return filtered
 }
 
+// notePoolUnavailable records a pool fetch failure as a cycle warning and
+// reports it as an empty pool rather than a hard error. A cold or expired
+// cache leaves no candidates to trade, but the cycle must still run so the LLM
+// can manage existing positions (see trader/auto_trader_loop.go).
+func (e *StrategyEngine) notePoolUnavailable(source string, err error) {
+	e.lastPoolWarning = fmt.Sprintf("Candidate pool '%s' unavailable (%v)", source, err)
+	logger.Warnf("⚠️ %s", e.lastPoolWarning)
+}
+
 func (e *StrategyEngine) getAI500Coins(limit int) ([]CandidateCoin, error) {
 	if limit <= 0 {
 		limit = 30
@@ -880,7 +889,8 @@ func (e *StrategyEngine) getAI500Coins(limit int) ([]CandidateCoin, error) {
 
 	res, err := e.trending.GetAI500Cached()
 	if err != nil {
-		return nil, err
+		e.notePoolUnavailable("ai500", err)
+		return []CandidateCoin{}, nil
 	}
 	if res.Stale {
 		e.lastPoolWarning = fmt.Sprintf("Using cached ai500 pool (age %s) — live fetch failed", res.Age.Round(time.Minute))
@@ -900,7 +910,8 @@ func (e *StrategyEngine) getOITopCoins(limit int) ([]CandidateCoin, error) {
 	}
 	res, err := e.trending.GetOITopCached(limit)
 	if err != nil {
-		return nil, err
+		e.notePoolUnavailable("oi_top", err)
+		return []CandidateCoin{}, nil
 	}
 	if res.Stale {
 		e.lastPoolWarning = fmt.Sprintf("Using cached oi_top pool (age %s) — live fetch failed", res.Age.Round(time.Minute))
@@ -922,7 +933,8 @@ func (e *StrategyEngine) getOILowCoins(limit int) ([]CandidateCoin, error) {
 	}
 	res, err := e.trending.GetOILowCached(limit)
 	if err != nil {
-		return nil, err
+		e.notePoolUnavailable("oi_low", err)
+		return []CandidateCoin{}, nil
 	}
 	if res.Stale {
 		e.lastPoolWarning = fmt.Sprintf("Using cached oi_low pool (age %s) — live fetch failed", res.Age.Round(time.Minute))
@@ -944,7 +956,8 @@ func (e *StrategyEngine) getNetflowTopCoins(limit int) ([]CandidateCoin, error) 
 	}
 	res, err := e.trending.GetNetFlowTopCached(limit)
 	if err != nil {
-		return nil, err
+		e.notePoolUnavailable("netflow_top", err)
+		return []CandidateCoin{}, nil
 	}
 	if res.Stale {
 		e.lastPoolWarning = fmt.Sprintf("Using cached netflow_top pool (age %s) — live fetch failed", res.Age.Round(time.Minute))
@@ -959,7 +972,8 @@ func (e *StrategyEngine) getNetflowLowCoins(limit int) ([]CandidateCoin, error) 
 	}
 	res, err := e.trending.GetNetFlowLowCached(limit)
 	if err != nil {
-		return nil, err
+		e.notePoolUnavailable("netflow_low", err)
+		return []CandidateCoin{}, nil
 	}
 	if res.Stale {
 		e.lastPoolWarning = fmt.Sprintf("Using cached netflow_low pool (age %s) — live fetch failed", res.Age.Round(time.Minute))
@@ -985,7 +999,8 @@ func (e *StrategyEngine) getPriceTopCoins(limit int) ([]CandidateCoin, error) {
 	}
 	res, err := e.trending.GetPriceTopCached(limit)
 	if err != nil {
-		return nil, err
+		e.notePoolUnavailable("price_top", err)
+		return []CandidateCoin{}, nil
 	}
 	if res.Stale {
 		e.lastPoolWarning = fmt.Sprintf("Using cached price_top pool (age %s) — live fetch failed", res.Age.Round(time.Minute))
@@ -1000,7 +1015,8 @@ func (e *StrategyEngine) getPriceLowCoins(limit int) ([]CandidateCoin, error) {
 	}
 	res, err := e.trending.GetPriceLowCached(limit)
 	if err != nil {
-		return nil, err
+		e.notePoolUnavailable("price_low", err)
+		return []CandidateCoin{}, nil
 	}
 	if res.Stale {
 		e.lastPoolWarning = fmt.Sprintf("Using cached price_low pool (age %s) — live fetch failed", res.Age.Round(time.Minute))
