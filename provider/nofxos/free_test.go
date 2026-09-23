@@ -3,6 +3,7 @@ package nofxos
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +68,27 @@ func TestFreeTrendingClient_GetAI500(t *testing.T) {
 	}
 	if len(coins) != 1 || coins[0].Pair != "CYSUSDT" || coins[0].Score != 75.0 {
 		t.Fatalf("unexpected %+v", coins)
+	}
+}
+
+func TestFreeTrendingClient_SendsBrowserHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// go test http server runs on 127.0.0.1; the SSRF-guarded clients would block it,
+		// so assert headers via a direct call path with a stdlib-backed client.
+		if !strings.HasPrefix(r.Header.Get("User-Agent"), "Mozilla") {
+			t.Errorf("missing browser UA, got %q", r.Header.Get("User-Agent"))
+		}
+		if r.Header.Get("Referer") != "https://vergex.trade/" {
+			t.Errorf("missing Referer, got %q", r.Header.Get("Referer"))
+		}
+		w.Write([]byte(`{"category":{"assets":[]}}`))
+	}))
+	defer srv.Close()
+
+	c := NewFreeTrendingClient()
+	c.baseURL = srv.URL
+	c.http = srv.Client() // stdlib client bypasses fingerprint/curl for this assertion
+	if _, err := c.GetAI500(); err != nil {
+		t.Fatalf("GetAI500: %v", err)
 	}
 }

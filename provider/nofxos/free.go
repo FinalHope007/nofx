@@ -22,13 +22,17 @@ const (
 // (OI / netflow / price) and the ai500 trending-category endpoint. No payment.
 type FreeTrendingClient struct {
 	baseURL string
-	http    *http.Client
+	http    security.HTTPDoer
 }
 
 func NewFreeTrendingClient() *FreeTrendingClient {
+	client, err := security.NewFreeHTTPClient(30 * time.Second)
+	if err != nil {
+		client = security.SafeHTTPClient(30 * time.Second)
+	}
 	return &FreeTrendingClient{
 		baseURL: strings.TrimRight(DefaultFreeTrendingBase, "/"),
-		http:    security.SafeHTTPClient(30 * time.Second),
+		http:    client,
 	}
 }
 
@@ -247,7 +251,7 @@ func (c *FreeTrendingClient) get(fullURL string) (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("trending request: %w", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; nofx)")
+	security.SetBrowserHeaders(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("trending GET: %w", err)
