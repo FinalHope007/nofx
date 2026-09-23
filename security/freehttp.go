@@ -1,10 +1,18 @@
 package security
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
+
+	fhttp "github.com/bogdanfinn/fhttp"
+	tlsclient "github.com/bogdanfinn/tls-client"
+	"github.com/bogdanfinn/tls-client/profiles"
 )
 
 type HTTPDoer interface {
@@ -58,8 +66,109 @@ func NewFreeHTTPClient(timeout time.Duration) (HTTPDoer, error) {
 	case FreeHTTPStdlib:
 		return SafeHTTPClient(timeout), nil
 	default:
-		return SafeHTTPClient(timeout), nil
+		return newFingerprintClient(timeout)
 	}
+}
+
+func newFingerprintClient(timeout time.Duration) (HTTPDoer, error) {
+	jar := tlsclient.NewCookieJar()
+	opts := []tlsclient.HttpClientOption{
+		tlsclient.WithTimeoutSeconds(int(timeout.Seconds())),
+		tlsclient.WithClientProfile(profiles.Chrome_133),
+		tlsclient.WithCookieJar(jar),
+	}
+	tc, err := tlsclient.NewHttpClient(tlsclient.NewNoopLogger(), opts...)
+	if err != nil {
+		return nil, fmt.Errorf("tls-client init: %w", err)
+	}
+	return &fallbackDoer{
+		primary:   &tlsAdapter{client: tc},
+		secondary: &curlDoer{timeout: timeout},
+	}, nil
+}
+
+type tlsAdapter struct {
+	client tlsclient.HttpClient
+}
+
+func (a *tlsAdapter) Do(req *http.Request) (*http.Response, error) {
+	freq, err := toFHTTPRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	fresp, err := a.client.Do(freq)
+	if err != nil {
+		return nil, err
+	}
+	return toNetHTTPResponse(fresp, req), nil
+}
+
+func toFHTTPRequest(req *http.Request) (*fhttp.Request, error) {
+	freq, err := fhttp.NewRequestWithContext(req.Context(), req.Method, req.URL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	if req.Body != nil {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		req.Body = io.NopCloser(bytes.NewReader(body))
+		freq.Body = io.NopCloser(bytes.NewReader(body))
+	}
+	freq.Header = fhttp.Header(req.Header.Clone())
+	freq.Host = req.Host
+	return freq, nil
+}
+
+func toNetHTTPResponse(fresp *fhttp.Response, req *http.Request) *http.Response {
+	header := make(http.Header, len(fresp.Header))
+	for k, v := range fresp.Header {
+		header[k] = append([]string(nil), v...)
+	}
+	return &http.Response{
+		Status:        fresp.Status,
+		StatusCode:    fresp.StatusCode,
+		Proto:         fresp.Proto,
+		ProtoMajor:    fresp.ProtoMajor,
+		ProtoMinor:    fresp.ProtoMinor,
+		Header:        header,
+		Body:          fresp.Body,
+		ContentLength: fresp.ContentLength,
+		Request:       req,
+	}
+}
+
+type fallbackDoer struct {
+	primary   HTTPDoer
+	secondary HTTPDoer
+	demoted   bool
+	mu        sync.Mutex
+}
+
+func (f *fallbackDoer) Do(req *http.Request) (*http.Response, error) {
+	f.mu.Lock()
+	demoted := f.demoted
+	f.mu.Unlock()
+
+	if !demoted {
+		resp, err := f.primary.Do(req)
+		if err == nil && isCloudflareChallenge(resp) {
+			f.mu.Lock()
+			f.demoted = true
+			f.mu.Unlock()
+			var body []byte
+			if resp.Body != nil {
+				body, _ = io.ReadAll(resp.Body)
+				resp.Body.Close()
+			}
+			retry := req.Clone(req.Context())
+			retry.Body = io.NopCloser(bytes.NewReader(body))
+			return f.secondary.Do(retry)
+		}
+		return resp, err
+	}
+	return f.secondary.Do(req)
 }
 
 func isCloudflareChallenge(resp *http.Response) bool {

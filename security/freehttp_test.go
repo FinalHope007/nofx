@@ -81,6 +81,35 @@ func TestCurlDoerParseRedirectChain(t *testing.T) {
 	}
 }
 
+func TestFallbackDoerDemotesOnChallenge(t *testing.T) {
+	primaryCalls, secondaryCalls := 0, 0
+	challenge := &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{"Server": []string{"cloudflare"}}}
+	ok := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: http.NoBody}
+
+	fd := &fallbackDoer{
+		primary:   doerFunc(func(*http.Request) (*http.Response, error) { primaryCalls++; return challenge, nil }),
+		secondary: doerFunc(func(*http.Request) (*http.Response, error) { secondaryCalls++; return ok, nil }),
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://vergex.trade/x", nil)
+
+	if _, err := fd.Do(req); err != nil {
+		t.Fatalf("first Do: %v", err)
+	}
+	if primaryCalls != 1 || secondaryCalls != 1 {
+		t.Fatalf("expected demotion to secondary on first call, primary=%d secondary=%d", primaryCalls, secondaryCalls)
+	}
+	if _, err := fd.Do(req); err != nil {
+		t.Fatalf("second Do: %v", err)
+	}
+	if primaryCalls != 1 || secondaryCalls != 2 {
+		t.Fatalf("expected sticky secondary, primary=%d secondary=%d", primaryCalls, secondaryCalls)
+	}
+}
+
+type doerFunc func(*http.Request) (*http.Response, error)
+
+func (f doerFunc) Do(r *http.Request) (*http.Response, error) { return f(r) }
+
 func TestCurlDoerParseLFOnly(t *testing.T) {
 	out := "HTTP/1.1 200 OK\n" +
 		"Content-Type: text/plain\n" +

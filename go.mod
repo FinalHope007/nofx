@@ -6,6 +6,7 @@ require (
 	github.com/adshao/go-binance/v2 v2.8.9
 	github.com/agiledragon/gomonkey/v2 v2.13.0
 	github.com/antihax/optional v1.0.0
+	github.com/bogdanfinn/tls-client v1.16.0
 	github.com/bybit-exchange/bybit.go.api v0.0.0-20250727214011-c9347d6804d6
 	github.com/elliottech/lighter-go v0.0.0-20251104171447-78b9b55ebc48
 	github.com/ethereum/go-ethereum v1.17.3
@@ -31,11 +32,19 @@ require (
 
 require (
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
+	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
+	github.com/bdandy/go-errors v1.2.2 // indirect
+	github.com/bdandy/go-socks4 v1.2.3 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.0 // indirect
+	github.com/bogdanfinn/fhttp v0.6.9 // indirect
+	github.com/bogdanfinn/quic-go-utls v1.0.10-utls // indirect
+	github.com/bogdanfinn/utls v1.7.8-barnius // indirect
+	github.com/bogdanfinn/websocket v1.5.6-barnius // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
+	github.com/cloudflare/circl v1.6.2 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/consensys/gnark-crypto v0.19.2 // indirect
 	github.com/crate-crypto/go-eth-kzg v1.5.0 // indirect
@@ -64,6 +73,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mailru/easyjson v0.9.2 // indirect
@@ -84,6 +94,7 @@ require (
 	github.com/sonirico/vago v0.11.4 // indirect
 	github.com/sonirico/vago/lol v0.1.0 // indirect
 	github.com/supranational/blst v0.3.16 // indirect
+	github.com/tam7t/hpkp v0.0.0-20160821193359-2b70b4024ed5 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.0 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
