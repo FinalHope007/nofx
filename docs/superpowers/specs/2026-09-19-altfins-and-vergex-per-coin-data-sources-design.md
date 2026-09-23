@@ -152,10 +152,16 @@ The `(N/10)` score suffix in the formatted trend values is preserved verbatim.
 From a server environment with no prior browser session, both vergex.trade
 per-coin endpoints return **HTTP 403 Cloudflare JS challenge** (with or without
 the Bearer token, with browser headers). The dashboard works because the browser
-solves the challenge and holds `cf_clearance`. The deployed server may or may not
-be challenged depending on its network path. This is handled by **graceful
-degradation**: a 403 is logged and the block is omitted, exactly like "no data".
-No challenge-solving code is added in this spec.
+solves the challenge and holds `cf_clearance`. **Update (2026-09-23):** the
+challenge is a Cloudflare **managed challenge** observed from server IPs on
+2026-09-23 — Go's default `net/http` TLS fingerprint is blocked while `curl`
+passes, so the deployed server is consistently challenged on a plain-HTTP path
+rather than "may or may not be". Mitigated in
+`docs/superpowers/specs/2026-09-23-vergex-cloudflare-resilience-design.md`:
+a fingerprint transport (`VERGEX_HTTP_MODE`, default `fingerprint`) with
+automatic curl-subprocess fallback on the first 403, plus an optional
+`VERGEX_CF_CLEARANCE` cookie. **Graceful degradation** (a 403 is logged and the
+block is omitted, exactly like "no data") still applies when both paths fail.
 
 ## Data Model
 

@@ -25,6 +25,10 @@
 | **CostLiquidationHeatmap** (per-coin) | `/data-intelligence/markets/<mt>/<sym>/riskbins` | **GO with token** (200 verified) |
 | **FlowMarkets** (frontend) | `/data-intelligence/flow/markets` | **GO** (no auth, 1:1) |
 
+### Cloudflare note (observed 2026-09-23)
+
+As of **2026-09-23**, vergex.trade returns a **Cloudflare managed challenge** to non-browser TLS fingerprints — plain Go `net/http` gets HTTP 403 while `curl` passes. The backend now uses a Chrome-fingerprint transport (`github.com/bogdanfinn/tls-client`) that auto-demotes to a curl subprocess on the first 403 challenge, selectable via `VERGEX_HTTP_MODE` (`fingerprint` default | `curl` | `stdlib`), with an optional `VERGEX_CF_CLEARANCE` cookie. Free candidate pools (e.g. `ai500`, `/trending-crypto` tabs) are cached with a **15-minute fresh window** and **2-hour stale-serve** on fetch failure. See `docs/superpowers/specs/2026-09-23-vergex-cloudflare-resilience-design.md`.
+
 ### Token: valid (corrected)
 
 The Bearer token in `paidsource-research.md:170` **works**. Verified with the exact token: `riskbins`, `summary`, `direction-change/BTC/current`, `structure-overview`, `holders`, `coverage`, `markets` list all return **HTTP 200**. Earlier 401s were from an unencoded symbol path (`core_perp:BTC` vs `core_perp%3ABTC`) and a corrupted token copy. The token has **no `exp` claim**, so its server-side lifetime is unknown — treat it as valid-now but plan a runtime token source/config for resilience (see Open questions).
