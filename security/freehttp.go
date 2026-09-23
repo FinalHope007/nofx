@@ -92,6 +92,9 @@ type tlsAdapter struct {
 }
 
 func (a *tlsAdapter) Do(req *http.Request) (*http.Response, error) {
+	if err := ValidateURL(req.URL.String()); err != nil {
+		return nil, err
+	}
 	freq, err := toFHTTPRequest(req)
 	if err != nil {
 		return nil, err

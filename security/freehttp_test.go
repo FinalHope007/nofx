@@ -1,6 +1,7 @@
 package security
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"testing"
@@ -109,6 +110,20 @@ func TestFallbackDoerDemotesOnChallenge(t *testing.T) {
 type doerFunc func(*http.Request) (*http.Response, error)
 
 func (f doerFunc) Do(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestTLSAdapterBlocksPrivateIP(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "")
+	req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1/", nil)
+	a := &tlsAdapter{client: nil}
+	_, err := a.Do(req)
+	if err == nil {
+		t.Fatalf("expected SSRF block, got nil error")
+	}
+	var ssrf *SSRFError
+	if !errors.As(err, &ssrf) {
+		t.Fatalf("expected *SSRFError, got %T: %v", err, err)
+	}
+}
 
 func TestCurlDoerParseLFOnly(t *testing.T) {
 	out := "HTTP/1.1 200 OK\n" +
