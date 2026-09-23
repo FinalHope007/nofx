@@ -74,18 +74,6 @@ func (c *keyedPoolCache[T]) get(key string, fetch func() (T, error)) (poolResult
 	return entry.get(fetch)
 }
 
-func (c *keyedPoolCache[T]) forceStale(key string, age time.Duration) {
-	c.mu.Lock()
-	entry, ok := c.entries[key]
-	c.mu.Unlock()
-	if !ok {
-		return
-	}
-	entry.mu.Lock()
-	entry.fetchedAt = time.Now().Add(-age)
-	entry.mu.Unlock()
-}
-
 func limitCacheKey(limit int) string {
 	return strconv.Itoa(limit)
 }
@@ -100,13 +88,4 @@ func (c *FreeTrendingClient) ForceStaleForTest(age time.Duration) {
 	c.ai500Cache.mu.Lock()
 	c.ai500Cache.fetchedAt = time.Now().Add(-age)
 	c.ai500Cache.mu.Unlock()
-}
-
-// ForceStaleForTestWithDuration backdates the duration+limit-keyed envelope
-// caches (OI / netflow / price) for a specific (duration, limit) key.
-func (c *FreeTrendingClient) ForceStaleForTestWithDuration(duration string, limit int, age time.Duration) {
-	key := durationLimitCacheKey(duration, limit)
-	c.oidCache.forceStale(key, age)
-	c.nfdCache.forceStale(key, age)
-	c.pxdCache.forceStale(key, age)
 }

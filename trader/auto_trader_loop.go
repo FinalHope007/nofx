@@ -105,7 +105,7 @@ func (at *AutoTrader) runCycle() error {
 	// are open: still call the LLM to manage them (positions-only context).
 	if len(ctx.CandidateCoins) == 0 && len(ctx.Positions) > 0 {
 		msg := fmt.Sprintf("⚠️ Candidate pool unavailable; managing %d existing position(s) only (no new positions)", len(ctx.Positions))
-		at.logWarnf(msg)
+		at.logWarnf("%s", msg)
 		record.ExecutionLog = append(record.ExecutionLog, msg)
 	} else if at.strategyEngine != nil {
 		if w := at.strategyEngine.ConsumePoolWarning(); w != "" {
@@ -422,8 +422,13 @@ func (at *AutoTrader) filterDecisionsToStrategyUniverse(decisions []kernel.Decis
 	}
 
 	filtered := make([]kernel.Decision, 0, len(decisions))
+	positionsOnly := len(ctx.CandidateCoins) == 0
 	for _, d := range decisions {
 		sym := normalizeUniverseSymbol(d.Symbol)
+		if positionsOnly && isOpenDecision(d.Action) {
+			at.logWarnf("🚫 Blocked AI %s for %s: candidate pool unavailable (positions-only cycle)", d.Action, d.Symbol)
+			continue
+		}
 		if sym == "" || sym == "ALL" {
 			filtered = append(filtered, d)
 			continue

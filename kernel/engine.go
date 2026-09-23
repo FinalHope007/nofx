@@ -248,7 +248,6 @@ type StrategyEngine struct {
 
 	recentDecisions []*store.DecisionRecord // prior-cycle assistant responses (per-trader)
 
-	lastPoolStale   bool
 	lastPoolWarning string
 
 	exchange string // trader exchange used to pick the kline source

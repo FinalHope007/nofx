@@ -76,6 +76,7 @@ func newFingerprintClient(timeout time.Duration) (HTTPDoer, error) {
 		tlsclient.WithTimeoutSeconds(int(timeout.Seconds())),
 		tlsclient.WithClientProfile(profiles.Chrome_133),
 		tlsclient.WithCookieJar(jar),
+		tlsclient.WithCustomRedirectFunc(fingerprintRedirectCheck),
 	}
 	tc, err := tlsclient.NewHttpClient(tlsclient.NewNoopLogger(), opts...)
 	if err != nil {
@@ -85,6 +86,15 @@ func newFingerprintClient(timeout time.Duration) (HTTPDoer, error) {
 		primary:   &tlsAdapter{client: tc},
 		secondary: &curlDoer{timeout: timeout},
 	}, nil
+}
+
+// fingerprintRedirectCheck validates every redirect target the tls-client
+// follows (requests are fhttp types). Mirrors SafeHTTPClient's CheckRedirect.
+func fingerprintRedirectCheck(req *fhttp.Request, via []*fhttp.Request) error {
+	if len(via) >= maxCurlRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxCurlRedirects)
+	}
+	return ValidateURL(req.URL.String())
 }
 
 type tlsAdapter struct {

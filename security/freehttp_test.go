@@ -4,8 +4,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
+
+	fhttp "github.com/bogdanfinn/fhttp"
 )
 
 func TestResolveFreeHTTPModeDefault(t *testing.T) {
@@ -144,5 +147,82 @@ func TestCurlDoerParseLFOnly(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "hello" {
 		t.Fatalf("unexpected body %q", string(body))
+	}
+}
+
+func TestCurlDoerRedirectToPrivateIPRejected(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "")
+	out := "HTTP/1.1 302 Found\r\n" +
+		"Location: http://127.0.0.1/\r\n" +
+		"Content-Length: 0\r\n" +
+		"\r\n"
+
+	resp, err := parseCurlResponse(out, nil)
+	if err != nil {
+		t.Fatalf("parseCurlResponse: %v", err)
+	}
+	_, isRedirect, err := nextCurlRedirect(resp, "https://vergex.trade/x")
+	if err == nil {
+		t.Fatalf("expected SSRF rejection of redirect to 127.0.0.1")
+	}
+	var ssrf *SSRFError
+	if !errors.As(err, &ssrf) {
+		t.Fatalf("expected *SSRFError, got %T: %v", err, err)
+	}
+	if isRedirect {
+		t.Fatalf("must not report redirect as followable when SSRF-blocked")
+	}
+}
+
+func TestCurlDoerRedirectResolvesAndValidates(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "")
+	out := "HTTP/1.1 301 Moved Permanently\r\n" +
+		"Location: /final\r\n" +
+		"Content-Length: 0\r\n" +
+		"\r\n"
+
+	resp, err := parseCurlResponse(out, nil)
+	if err != nil {
+		t.Fatalf("parseCurlResponse: %v", err)
+	}
+	next, isRedirect, err := nextCurlRedirect(resp, "http://93.184.216.34/x")
+	if err != nil {
+		t.Fatalf("nextCurlRedirect: %v", err)
+	}
+	if !isRedirect {
+		t.Fatalf("expected redirect")
+	}
+	if next != "http://93.184.216.34/final" {
+		t.Fatalf("unexpected resolved URL %q", next)
+	}
+}
+
+func TestFingerprintRedirectCheckBlocksPrivateIP(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "")
+	u, err := url.Parse("http://127.0.0.1/")
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	req := &fhttp.Request{Method: fhttp.MethodGet, URL: u}
+	err = fingerprintRedirectCheck(req, nil)
+	if err == nil {
+		t.Fatalf("expected SSRF rejection")
+	}
+	var ssrf *SSRFError
+	if !errors.As(err, &ssrf) {
+		t.Fatalf("expected *SSRFError, got %T: %v", err, err)
+	}
+}
+
+func TestFingerprintRedirectCheckCapsHops(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "")
+	u, err := url.Parse("http://93.184.216.34/x")
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	req := &fhttp.Request{Method: fhttp.MethodGet, URL: u}
+	via := make([]*fhttp.Request, maxCurlRedirects)
+	if err := fingerprintRedirectCheck(req, via); err == nil {
+		t.Fatalf("expected hop-limit error at %d redirects", maxCurlRedirects)
 	}
 }

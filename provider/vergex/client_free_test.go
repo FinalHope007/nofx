@@ -14,6 +14,9 @@ func TestFreeClient_doFreeGET_SendsBrowserHeaders(t *testing.T) {
 		if !strings.HasPrefix(r.Header.Get("User-Agent"), "Mozilla") {
 			t.Errorf("missing browser UA, got %q", r.Header.Get("User-Agent"))
 		}
+		if r.Header.Get("Referer") != "https://vergex.trade/" {
+			t.Errorf("missing Referer, got %q", r.Header.Get("Referer"))
+		}
 		w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()

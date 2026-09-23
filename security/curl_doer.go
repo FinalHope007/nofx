@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 )
+
+const maxCurlRedirects = 10
 
 type curlDoer struct {
 	timeout time.Duration
@@ -33,8 +36,71 @@ func (c *curlDoer) Do(req *http.Request) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(req.Context(), c.timeout)
 	defer cancel()
 
+	currentURL := req.URL.String()
+	for hop := 0; ; hop++ {
+		out, err := c.execOnce(ctx, req, currentURL)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := parseCurlResponse(string(out), req)
+		if err != nil {
+			return nil, err
+		}
+		next, isRedirect, err := nextCurlRedirect(resp, currentURL)
+		if err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		if !isRedirect {
+			return resp, nil
+		}
+		if hop >= maxCurlRedirects {
+			resp.Body.Close()
+			return nil, fmt.Errorf("curl subprocess: stopped after %d redirects", maxCurlRedirects)
+		}
+		resp.Body.Close()
+		currentURL = next
+	}
+}
+
+// nextCurlRedirect resolves and validates the redirect target of a 3xx
+// response. Returns the next URL to request, or isRedirect=false when the
+// response is final (non-redirect status or missing Location).
+func nextCurlRedirect(resp *http.Response, currentURL string) (string, bool, error) {
+	if !isRedirectStatus(resp.StatusCode) {
+		return "", false, nil
+	}
+	loc := resp.Header.Get("Location")
+	if loc == "" {
+		return "", false, nil
+	}
+	base, err := url.Parse(currentURL)
+	if err != nil {
+		return "", false, fmt.Errorf("curl subprocess: bad current URL %q: %w", currentURL, err)
+	}
+	ref, err := url.Parse(loc)
+	if err != nil {
+		return "", false, fmt.Errorf("curl subprocess: bad redirect location %q: %w", loc, err)
+	}
+	resolved := base.ResolveReference(ref)
+	if err := ValidateURL(resolved.String()); err != nil {
+		return "", false, err
+	}
+	return resolved.String(), true, nil
+}
+
+func isRedirectStatus(code int) bool {
+	switch code {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
+		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return true
+	}
+	return false
+}
+
+func (c *curlDoer) execOnce(ctx context.Context, req *http.Request, rawURL string) ([]byte, error) {
 	args := []string{
-		"-sS", "-L", "--max-time", strconv.FormatFloat(c.timeout.Seconds(), 'f', 3, 64),
+		"-sS", "--max-time", strconv.FormatFloat(c.timeout.Seconds(), 'f', 3, 64),
 		"-D", "-", "-o", "-",
 		"-A", req.Header.Get("User-Agent"),
 		"-H", "Accept: " + req.Header.Get("Accept"),
@@ -49,14 +115,13 @@ func (c *curlDoer) Do(req *http.Request) (*http.Response, error) {
 	if ck := req.Header.Get("Cookie"); ck != "" {
 		args = append(args, "-H", "Cookie: "+ck)
 	}
-	args = append(args, req.URL.String())
+	args = append(args, rawURL)
 
 	out, err := exec.CommandContext(ctx, "curl", args...).Output()
 	if err != nil {
 		return nil, fmt.Errorf("curl subprocess: %w", err)
 	}
-
-	return parseCurlResponse(string(out), req)
+	return out, nil
 }
 
 func parseCurlResponse(raw string, req *http.Request) (*http.Response, error) {
