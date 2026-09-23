@@ -1017,14 +1017,14 @@ func TestAttachPerCoinSignalsUsesStaleAI500(t *testing.T) {
 	if err := AttachPerCoinSignals(ctx, engine); err != nil {
 		t.Fatalf("attach: %v", err)
 	}
-	sig := engine.GetPerCoinSignal("BRUSDT")
-	if sig == nil || sig.AI500 == nil {
-		t.Fatalf("expected stale AI500 signal attached, got %+v", sig)
+	sig, ok := engine.PerCoinSignalFor("BRUSDT")
+	if !ok || sig.AI500 == nil {
+		t.Fatalf("expected stale AI500 signal attached, got %+v ok=%v", sig, ok)
 	}
 }
 ```
 
-Confirm the exact accessor name for per-coin signals (`GetPerCoinSignal`) via `grep -n "func (e \*StrategyEngine) GetPerCoinSignal" kernel/*.go` before writing the test; if the name differs, use the existing accessor.
+The accessor is `PerCoinSignalFor(symbol string) (PerCoinSignal, bool)` at `kernel/engine.go:406` (verified).
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1137,7 +1137,7 @@ func shouldSkipForNoCandidates(candidateCount, positionCount int) bool {
 
 - [ ] **Step 4: Add the empty-candidates prompt instruction**
 
-In `kernel/prompt_builder.go` or `kernel/engine_prompt.go` where the candidate section is built (`engine_prompt.go:915` region), when `len(ctx.CandidateCoins)==0` write: `"No candidate pool is available this cycle; manage existing positions only.\n\n"`. Locate the exact block with `grep -n "formatCandidateCoins\|Candidate Coins" kernel/engine_prompt.go` and insert the conditional immediately before the candidate loop.
+In `kernel/engine_prompt.go`, the candidate section is written at line 913 (`sb.WriteString(fmt.Sprintf("## Candidate Coins (%d coins)\n\n", len(ctx.MarketDataMap)))`) with the loop at 915. Immediately before line 913's write, add a conditional: if `len(ctx.CandidateCoins) == 0`, write `"No candidate pool is available this cycle; manage existing positions only.\n\n"` instead of (or before) the candidate list.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
