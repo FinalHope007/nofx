@@ -56,3 +56,30 @@ func TestPoolCacheColdFetchError(t *testing.T) {
 		t.Fatalf("expected error on cold failure")
 	}
 }
+
+func TestKeyedPoolCache_DifferentKeysDontCollide(t *testing.T) {
+	c := newKeyedPoolCache[string]()
+	fetches := 0
+
+	r1, err := c.get("15m", func() (string, error) { fetches++; return "a", nil })
+	if err != nil || r1.Value != "a" {
+		t.Fatalf("15m: %+v err=%v", r1, err)
+	}
+	r2, err := c.get("1h", func() (string, error) { fetches++; return "b", nil })
+	if err != nil || r2.Value != "b" {
+		t.Fatalf("1h: %+v err=%v", r2, err)
+	}
+	if fetches != 2 {
+		t.Fatalf("expected one fetch per key, got %d", fetches)
+	}
+
+	if _, err := c.get("15m", func() (string, error) { fetches++; return "x", nil }); err != nil {
+		t.Fatalf("15m repeat: %v", err)
+	}
+	if _, err := c.get("1h", func() (string, error) { fetches++; return "x", nil }); err != nil {
+		t.Fatalf("1h repeat: %v", err)
+	}
+	if fetches != 2 {
+		t.Fatalf("expected fresh hits within each key, got fetches=%d", fetches)
+	}
+}

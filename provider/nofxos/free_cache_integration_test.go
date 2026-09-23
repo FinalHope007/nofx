@@ -38,3 +38,32 @@ func TestGetAI500Cached_ServesStaleOnFetchFailure(t *testing.T) {
 		t.Fatalf("expected stale BRUSDT, got %+v", r2)
 	}
 }
+
+func TestGetOIDataCached_DifferentDurationsDontCollide(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Write([]byte(`{"top":[],"low":[]}`))
+	}))
+	defer srv.Close()
+
+	c := NewFreeTrendingClient()
+	c.baseURL = srv.URL
+	c.http = srv.Client()
+
+	if _, err := c.GetOIDataCached("15m", 10); err != nil {
+		t.Fatalf("15m: %v", err)
+	}
+	if _, err := c.GetOIDataCached("1h", 10); err != nil {
+		t.Fatalf("1h: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected 2 underlying fetches for different durations, got %d", calls)
+	}
+	if _, err := c.GetOIDataCached("15m", 10); err != nil {
+		t.Fatalf("15m repeat: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected fresh hit for repeated key, got calls=%d", calls)
+	}
+}

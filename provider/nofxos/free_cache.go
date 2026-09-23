@@ -1,6 +1,7 @@
 package nofxos
 
 import (
+	"strconv"
 	"sync"
 	"time"
 )
@@ -49,10 +50,63 @@ func (c *poolCache[T]) get(fetch func() (T, error)) (poolResult[T], error) {
 	return poolResult[T]{Value: zero}, err
 }
 
+// keyedPoolCache partitions a poolCache per key (duration/limit) so requests
+// with different parameters never serve each other's values within the fresh
+// TTL. The mutex is only held for entry lookup/creation; each poolCache has
+// its own lock, so different keys fetch concurrently.
+type keyedPoolCache[T any] struct {
+	mu      sync.Mutex
+	entries map[string]*poolCache[T]
+}
+
+func newKeyedPoolCache[T any]() keyedPoolCache[T] {
+	return keyedPoolCache[T]{entries: make(map[string]*poolCache[T])}
+}
+
+func (c *keyedPoolCache[T]) get(key string, fetch func() (T, error)) (poolResult[T], error) {
+	c.mu.Lock()
+	entry, ok := c.entries[key]
+	if !ok {
+		entry = &poolCache[T]{}
+		c.entries[key] = entry
+	}
+	c.mu.Unlock()
+	return entry.get(fetch)
+}
+
+func (c *keyedPoolCache[T]) forceStale(key string, age time.Duration) {
+	c.mu.Lock()
+	entry, ok := c.entries[key]
+	c.mu.Unlock()
+	if !ok {
+		return
+	}
+	entry.mu.Lock()
+	entry.fetchedAt = time.Now().Add(-age)
+	entry.mu.Unlock()
+}
+
+func limitCacheKey(limit int) string {
+	return strconv.Itoa(limit)
+}
+
+func durationLimitCacheKey(duration string, limit int) string {
+	return duration + "\x00" + strconv.Itoa(limit)
+}
+
 // ForceStaleForTest backdates the ai500 cache timestamp so tests can
 // exercise stale-serve behavior without waiting for the real TTL.
 func (c *FreeTrendingClient) ForceStaleForTest(age time.Duration) {
 	c.ai500Cache.mu.Lock()
 	c.ai500Cache.fetchedAt = time.Now().Add(-age)
 	c.ai500Cache.mu.Unlock()
+}
+
+// ForceStaleForTestWithDuration backdates the duration+limit-keyed envelope
+// caches (OI / netflow / price) for a specific (duration, limit) key.
+func (c *FreeTrendingClient) ForceStaleForTestWithDuration(duration string, limit int, age time.Duration) {
+	key := durationLimitCacheKey(duration, limit)
+	c.oidCache.forceStale(key, age)
+	c.nfdCache.forceStale(key, age)
+	c.pxdCache.forceStale(key, age)
 }
