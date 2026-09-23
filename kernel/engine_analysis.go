@@ -216,8 +216,14 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 	out := make(map[string]PerCoinSignal)
 
 	if cfg.Indicators.EnableAI500Data {
-		coins, err := engine.trending.GetAI500()
-		if err == nil {
+		res, err := engine.trending.GetAI500Cached()
+		if err != nil {
+			logger.Warnf("⚠️ AI500 prompt data fetch failed: %v", err)
+		} else {
+			if res.Stale {
+				logger.Warnf("⚠️ Using stale AI500 data (age %s) — live fetch failed", res.Age.Round(time.Minute))
+			}
+			coins := res.Value
 			for i := range coins {
 				norm := market.Normalize(coins[i].Pair)
 				if !symSet[norm] {
@@ -228,8 +234,6 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 				sig.AI500 = &c
 				out[norm] = sig
 			}
-		} else {
-			logger.Warnf("⚠️ AI500 prompt data fetch failed: %v", err)
 		}
 	}
 
@@ -239,27 +243,36 @@ func attachPerCoinSignals(ctx *Context, engine *StrategyEngine) error {
 
 	for _, dur := range durations {
 		if cfg.Indicators.EnableOIData {
-			env, err := engine.trending.GetOIData(dur, limit)
-			if err == nil {
-				oiByDur[dur] = oiListsToMap(env.Top, env.Low, symSet)
-			} else {
+			res, err := engine.trending.GetOIDataCached(dur, limit)
+			if err != nil {
 				logger.Warnf("⚠️ OI prompt data fetch failed (%s): %v", dur, err)
+			} else {
+				if res.Stale {
+					logger.Warnf("⚠️ Using stale OI data (age %s) — live fetch failed", res.Age.Round(time.Minute))
+				}
+				oiByDur[dur] = oiListsToMap(res.Value.Top, res.Value.Low, symSet)
 			}
 		}
 		if cfg.Indicators.EnableNetflowData {
-			env, err := engine.trending.GetNetflowData(dur, limit)
-			if err == nil {
-				nfByDur[dur] = netflowListsToMap(env.Top, env.Low, symSet)
-			} else {
+			res, err := engine.trending.GetNetflowDataCached(dur, limit)
+			if err != nil {
 				logger.Warnf("⚠️ netflow prompt data fetch failed (%s): %v", dur, err)
+			} else {
+				if res.Stale {
+					logger.Warnf("⚠️ Using stale netflow data (age %s) — live fetch failed", res.Age.Round(time.Minute))
+				}
+				nfByDur[dur] = netflowListsToMap(res.Value.Top, res.Value.Low, symSet)
 			}
 		}
 		if cfg.Indicators.EnablePriceData {
-			env, err := engine.trending.GetPriceData(dur, limit)
-			if err == nil {
-				pxByDur[dur] = priceListsToMap(env.Top, env.Low, symSet)
-			} else {
+			res, err := engine.trending.GetPriceDataCached(dur, limit)
+			if err != nil {
 				logger.Warnf("⚠️ price prompt data fetch failed (%s): %v", dur, err)
+			} else {
+				if res.Stale {
+					logger.Warnf("⚠️ Using stale price data (age %s) — live fetch failed", res.Age.Round(time.Minute))
+				}
+				pxByDur[dur] = priceListsToMap(res.Value.Top, res.Value.Low, symSet)
 			}
 		}
 	}

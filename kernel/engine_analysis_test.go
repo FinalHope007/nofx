@@ -7,7 +7,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"nofx/provider/nofxos"
 	"nofx/provider/vergex"
 	"nofx/store"
 )
@@ -215,6 +217,38 @@ func TestAttachPerCoinSignalsVergexSkipsForVergexSignalSource(t *testing.T) {
 	sig, _ := engine.PerCoinSignalFor("ZECUSDT")
 	if len(sig.VergexSignalLab) != 0 {
 		t.Fatalf("expected no signal lab for vergex_signal source, got %s", sig.VergexSignalLab)
+	}
+}
+
+func TestAttachPerCoinSignalsUsesStaleAI500(t *testing.T) {
+	t.Setenv("ALLOW_LOCAL_CUSTOM_API", "1")
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.Write([]byte(`{"category":{"assets":[{"symbol":"BR","pair":"BRUSDT","score":75}]}}`))
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	tr := nofxos.NewFreeTrendingClient()
+	tr.SetBaseURL(srv.URL)
+	engine := &StrategyEngine{trending: tr, config: &store.StrategyConfig{
+		Indicators: store.IndicatorConfig{EnableAI500Data: true},
+	}}
+	// warm cache
+	_, _ = engine.getAI500Coins(10)
+	tr.ForceStaleForTest(30 * time.Minute)
+
+	ctx := &Context{CandidateCoins: []CandidateCoin{{Symbol: "BRUSDT"}}}
+	if err := AttachPerCoinSignals(ctx, engine); err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	sig, ok := engine.PerCoinSignalFor("BRUSDT")
+	if !ok || sig.AI500 == nil {
+		t.Fatalf("expected stale AI500 signal attached, got %+v ok=%v", sig, ok)
 	}
 }
 
