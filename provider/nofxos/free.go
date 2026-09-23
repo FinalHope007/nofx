@@ -23,6 +23,17 @@ const (
 type FreeTrendingClient struct {
 	baseURL string
 	http    security.HTTPDoer
+
+	ai500Cache poolCache[[]CoinData]
+	oiTopCache poolCache[[]OIPosition]
+	oiLowCache poolCache[[]OIPosition]
+	nfTopCache poolCache[[]NetFlowPosition]
+	nfLowCache poolCache[[]NetFlowPosition]
+	pxTopCache poolCache[[]PriceRankingItem]
+	pxLowCache poolCache[[]PriceRankingItem]
+	oidCache   poolCache[*OIDataEnvelope]
+	nfdCache   poolCache[*NetflowEnvelope]
+	pxdCache   poolCache[*PriceEnvelope]
 }
 
 func NewFreeTrendingClient() *FreeTrendingClient {
@@ -227,6 +238,46 @@ func (c *FreeTrendingClient) GetAI500() ([]CoinData, error) {
 		coins[len(coins)-1].PeakScore = parsePeakScore(a.Signal)
 	}
 	return coins, nil
+}
+
+func (c *FreeTrendingClient) GetAI500Cached() (poolResult[[]CoinData], error) {
+	return c.ai500Cache.get(func() ([]CoinData, error) { return c.GetAI500() })
+}
+
+func (c *FreeTrendingClient) GetOITopCached(limit int) (poolResult[[]OIPosition], error) {
+	return c.oiTopCache.get(func() ([]OIPosition, error) { return c.GetOITop(limit) })
+}
+
+func (c *FreeTrendingClient) GetOILowCached(limit int) (poolResult[[]OIPosition], error) {
+	return c.oiLowCache.get(func() ([]OIPosition, error) { return c.GetOILow(limit) })
+}
+
+func (c *FreeTrendingClient) GetNetFlowTopCached(limit int) (poolResult[[]NetFlowPosition], error) {
+	return c.nfTopCache.get(func() ([]NetFlowPosition, error) { return c.GetNetFlowTop(limit) })
+}
+
+func (c *FreeTrendingClient) GetNetFlowLowCached(limit int) (poolResult[[]NetFlowPosition], error) {
+	return c.nfLowCache.get(func() ([]NetFlowPosition, error) { return c.GetNetFlowLow(limit) })
+}
+
+func (c *FreeTrendingClient) GetPriceTopCached(limit int) (poolResult[[]PriceRankingItem], error) {
+	return c.pxTopCache.get(func() ([]PriceRankingItem, error) { return c.GetPriceTop(limit) })
+}
+
+func (c *FreeTrendingClient) GetPriceLowCached(limit int) (poolResult[[]PriceRankingItem], error) {
+	return c.pxLowCache.get(func() ([]PriceRankingItem, error) { return c.GetPriceLow(limit) })
+}
+
+func (c *FreeTrendingClient) GetOIDataCached(duration string, limit int) (poolResult[*OIDataEnvelope], error) {
+	return c.oidCache.get(func() (*OIDataEnvelope, error) { return c.GetOIData(duration, limit) })
+}
+
+func (c *FreeTrendingClient) GetNetflowDataCached(duration string, limit int) (poolResult[*NetflowEnvelope], error) {
+	return c.nfdCache.get(func() (*NetflowEnvelope, error) { return c.GetNetflowData(duration, limit) })
+}
+
+func (c *FreeTrendingClient) GetPriceDataCached(duration string, limit int) (poolResult[*PriceEnvelope], error) {
+	return c.pxdCache.get(func() (*PriceEnvelope, error) { return c.GetPriceData(duration, limit) })
 }
 
 // parsePeakScore extracts the numeric peak score from a signal display string

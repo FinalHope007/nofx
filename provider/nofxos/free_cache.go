@@ -48,3 +48,11 @@ func (c *poolCache[T]) get(fetch func() (T, error)) (poolResult[T], error) {
 	var zero T
 	return poolResult[T]{Value: zero}, err
 }
+
+// ForceStaleForTest backdates the ai500 cache timestamp so tests can
+// exercise stale-serve behavior without waiting for the real TTL.
+func (c *FreeTrendingClient) ForceStaleForTest(age time.Duration) {
+	c.ai500Cache.mu.Lock()
+	c.ai500Cache.fetchedAt = time.Now().Add(-age)
+	c.ai500Cache.mu.Unlock()
+}
